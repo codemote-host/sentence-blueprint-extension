@@ -315,12 +315,106 @@
   color: var(--sbp-accent) !important;
 }
 
+.sbp-annotation-tabs {
+  display: inline-flex !important;
+  align-self: flex-start !important;
+  gap: 2px !important;
+  padding: 2px !important;
+  border: 1px solid var(--sbp-border) !important;
+  border-radius: 7px !important;
+  background: var(--sbp-surface) !important;
+}
+
+.sbp-annotation-tab {
+  all: unset !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: 24px !important;
+  padding: 2px 9px !important;
+  border-radius: 5px !important;
+  color: var(--sbp-muted) !important;
+  font: inherit !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  user-select: none !important;
+}
+
+.sbp-annotation-tab:hover:not(:disabled) {
+  color: var(--sbp-accent) !important;
+  background: var(--sbp-accent-soft) !important;
+}
+
+.sbp-annotation-tab.is-active {
+  color: var(--sbp-on-accent) !important;
+  background: var(--sbp-accent) !important;
+}
+
+.sbp-annotation-tab:disabled {
+  opacity: 0.55 !important;
+  cursor: wait !important;
+}
+
 .sbp-selection-source {
   display: block !important;
   max-width: 100% !important;
   color: var(--sbp-muted) !important;
   overflow-wrap: anywhere !important;
 }
+
+.sbp-structure-token {
+  display: inline !important;
+  padding: 1px 2px !important;
+  border-radius: 3px !important;
+  color: var(--sbp-structure-color, var(--sbp-text)) !important;
+  background: color-mix(in srgb, var(--sbp-structure-color) 10%, transparent) !important;
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--sbp-structure-color) 42%, transparent) !important;
+  font-weight: 700 !important;
+}
+
+.sbp-structure-token:hover {
+  background: color-mix(in srgb, var(--sbp-structure-color) 17%, transparent) !important;
+}
+
+.sbp-structure-legend {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 5px 9px !important;
+  margin-top: 1px !important;
+}
+
+.sbp-structure-legend[hidden] {
+  display: none !important;
+}
+
+.sbp-structure-legend-item {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  color: var(--sbp-structure-color, var(--sbp-text)) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+}
+
+.sbp-structure-swatch {
+  display: inline-block !important;
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 2px !important;
+  background: var(--sbp-structure-color, var(--sbp-text)) !important;
+}
+
+.sbp-structure-main-clause,
+.sbp-structure-subject { --sbp-structure-color: #1d4ed8; }
+.sbp-structure-adverbial-clause,
+.sbp-structure-modifier { --sbp-structure-color: #c2410c; }
+.sbp-structure-relative-clause,
+.sbp-structure-complement { --sbp-structure-color: #7c3aed; }
+.sbp-structure-nominal-clause,
+.sbp-structure-object { --sbp-structure-color: #047857; }
+.sbp-structure-other-clause { --sbp-structure-color: #be123c; }
+.sbp-structure-predicate { --sbp-structure-color: #dc2626; }
+.sbp-structure-connector { --sbp-structure-color: #475569; }
 
 .sbp-sentence-analysis {
   display: block !important;
@@ -375,3 +469,15 @@
 .sbp-theme-dark .sbp-pos-conjunction { --sbp-pos-color: #fde68a; }
 .sbp-theme-dark .sbp-pos-determiner { --sbp-pos-color: #cbd5e1; }
 .sbp-theme-dark .sbp-pos-number { --sbp-pos-color: #5eead4; }
+
+.sbp-theme-dark .sbp-structure-main-clause,
+.sbp-theme-dark .sbp-structure-subject { --sbp-structure-color: #93c5fd; }
+.sbp-theme-dark .sbp-structure-adverbial-clause,
+.sbp-theme-dark .sbp-structure-modifier { --sbp-structure-color: #fcd34d; }
+.sbp-theme-dark .sbp-structure-relative-clause,
+.sbp-theme-dark .sbp-structure-complement { --sbp-structure-color: #d8b4fe; }
+.sbp-theme-dark .sbp-structure-nominal-clause,
+.sbp-theme-dark .sbp-structure-object { --sbp-structure-color: #6ee7b7; }
+.sbp-theme-dark .sbp-structure-other-clause { --sbp-structure-color: #fda4af; }
+.sbp-theme-dark .sbp-structure-predicate { --sbp-structure-color: #fda4af; }
+.sbp-theme-dark .sbp-structure-connector { --sbp-structure-color: #cbd5e1; }

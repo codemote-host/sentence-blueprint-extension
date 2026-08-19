@@ -95,6 +95,47 @@ try {
               },
             };
           }
+          if (message.sentence === "Because Docker controls the virtualization layer, it can be monitored in ways that aren't possible.") {
+            return {
+              ok: true,
+              data: {
+                sentence: message.sentence,
+                analysis_method: "Stanford Stanza",
+                pattern: "复合句（主句 SV）",
+                skeleton: "it + can be monitored",
+                components: [
+                  { text: "it", role: "S", label: "主语", explanation: "主句主语" },
+                  { text: "can be monitored", role: "V", label: "谓语", explanation: "主句谓语" },
+                ],
+                predicates: [{ text: "can be monitored", tense: "情态动词结构", voice: "被动", type: "动词谓语" }],
+                clauses: [
+                  { text: "Because Docker controls the virtualization layer", type: "原因状语从句", function: "状语" },
+                  { text: "that aren't possible", type: "定语从句", function: "修饰先行词 ways" },
+                ],
+                non_finite: [],
+                word_classes: [
+                  { text: "Because", pos: "从属连接词" },
+                  { text: "Docker", pos: "专有名词" },
+                  { text: "controls", pos: "动词" },
+                  { text: "the", pos: "限定词" },
+                  { text: "virtualization", pos: "名词" },
+                  { text: "layer", pos: "名词" },
+                  { text: "it", pos: "代词" },
+                  { text: "can", pos: "助动词/系动词" },
+                  { text: "be", pos: "助动词/系动词" },
+                  { text: "monitored", pos: "动词" },
+                  { text: "in", pos: "介词" },
+                  { text: "ways", pos: "名词" },
+                  { text: "that", pos: "从属连接词" },
+                  { text: "aren't", pos: "助动词/系动词" },
+                  { text: "possible", pos: "形容词" },
+                ],
+                explanations: [],
+                warnings: [],
+                confidence: 0.9,
+              },
+            };
+          }
           return { ok: true, data: globalThis.SentenceBlueprintFallback.analyze(message.sentence) };
         },
       },
@@ -197,6 +238,63 @@ try {
   if (compounds.chips.some((item) => item === "high 形容词" || item === "performance 名词")) {
     throw new Error(`词性层仍显示连字符复合词的内部碎片：${JSON.stringify(compounds)}`);
   }
+  await compoundInline.locator('[data-mode="structure"]').click();
+  const simpleStructureLabels = await compoundInline
+    .locator(".sbp-structure-token")
+    .evaluateAll((items) => [...new Set(items.map((item) => item.title))]);
+  if (!simpleStructureLabels.includes("主语") || !simpleStructureLabels.includes("谓语") || !simpleStructureLabels.includes("表语/主补")) {
+    throw new Error(`简单句成分视图不符合预期：${JSON.stringify(simpleStructureLabels)}`);
+  }
+  await compoundInline.locator('[data-mode="pos"]').click();
+
+  await page.evaluate(() => {
+    const paragraph = document.createElement("p");
+    paragraph.id = "clause-structure-example";
+    paragraph.textContent = "Because Docker controls the virtualization layer, it can be monitored in ways that aren't possible.";
+    document.querySelector("article").append(paragraph);
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    globalThis.__sbpDispatch({
+      type: "SBP_ANALYZE_SELECTION",
+      sentence: paragraph.textContent,
+    });
+  });
+  const structureInline = page.locator("#clause-structure-example + .sbp-selection-inline");
+  await structureInline.locator(".sbp-component").first().waitFor({ timeout: 15_000 });
+  await structureInline.locator('[data-mode="structure"]').click();
+  const structureView = await structureInline.evaluate((node) => ({
+    sourceText: node.querySelector(".sbp-selection-source")?.textContent || "",
+    activeMode: node.querySelector(".sbp-annotation-tab.is-active")?.dataset.mode || "",
+    segments: [...node.querySelectorAll(".sbp-structure-token")].map((item) => ({
+      text: item.textContent,
+      label: item.title,
+    })),
+    legend: [...node.querySelectorAll(".sbp-structure-legend-item")].map((item) => item.textContent),
+  }));
+  const structureLabels = new Set(structureView.segments.map((item) => item.label));
+  if (
+    structureView.sourceText !== "Because Docker controls the virtualization layer, it can be monitored in ways that aren't possible." ||
+    structureView.activeMode !== "structure" ||
+    !structureLabels.has("主句") ||
+    !structureLabels.has("原因状语从句") ||
+    !structureLabels.has("定语从句") ||
+    structureView.legend.length !== 3
+  ) {
+    throw new Error(`句子结构视图不符合预期：${JSON.stringify(structureView)}`);
+  }
+  await structureInline.locator('[data-mode="pos"]').click();
+  const returnedToPos = await structureInline.evaluate((node) => ({
+    activeMode: node.querySelector(".sbp-annotation-tab.is-active")?.dataset.mode || "",
+    posTokens: node.querySelectorAll(".sbp-pos-token").length,
+    structureTokens: node.querySelectorAll(".sbp-structure-token").length,
+    legendHidden: node.querySelector(".sbp-structure-legend")?.hidden,
+  }));
+  if (returnedToPos.activeMode !== "pos" || returnedToPos.posTokens < 10 || returnedToPos.structureTokens !== 0 || !returnedToPos.legendHidden) {
+    throw new Error(`词性/结构标签页切换失败：${JSON.stringify(returnedToPos)}`);
+  }
   const lightTheme = await inline.evaluate((node) => ({
     isLight: node.classList.contains("sbp-theme-light"),
     background: getComputedStyle(node.querySelector(".sbp-details")).backgroundColor,
@@ -254,9 +352,11 @@ try {
   await page.waitForTimeout(260);
 
   fs.mkdirSync(artifactDir, { recursive: true });
+  await structureInline.locator('[data-mode="structure"]').click();
+  await structureInline.screenshot({ path: path.join(artifactDir, "structure-view-demo.png") });
   await page.screenshot({ path: path.join(artifactDir, "third-line-demo.png"), fullPage: true });
 
-  process.stdout.write(`E2E OK：页面主题自动适配；原句与词性标签已按词性着色。\n`);
+  process.stdout.write(`E2E OK：词性/句子结构双视图、主题适配与连字符复合词均通过。\n`);
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));

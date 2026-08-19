@@ -421,8 +421,25 @@
     const row = el("span", `${ROW_CLASS} sbp-selection-inline`);
     row.dataset.sbpSource = sentence;
     const header = el("span", "sbp-selection-header");
+    const title = el("strong", "", "句子蓝图 · 当前内容下方");
+    const annotationTabs = el("span", "sbp-annotation-tabs");
+    annotationTabs.setAttribute("role", "tablist");
+    annotationTabs.setAttribute("aria-label", "原句标注方式");
+    const posTab = el("button", "sbp-annotation-tab is-active", "词性视图");
+    const structureTab = el("button", "sbp-annotation-tab", "句子结构");
+    const tabs = { pos: posTab, structure: structureTab };
+    for (const [mode, tab] of Object.entries(tabs)) {
+      tab.type = "button";
+      tab.disabled = true;
+      tab.dataset.mode = mode;
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-selected", mode === "pos" ? "true" : "false");
+    }
+    annotationTabs.append(posTab, structureTab);
     const sourceLine = el("span", "sbp-selection-source", sentence);
-    header.append(el("strong", "", "句子蓝图 · 当前内容下方"), sourceLine);
+    const structureLegend = el("span", "sbp-structure-legend");
+    structureLegend.hidden = true;
+    header.append(title, annotationTabs, sourceLine, structureLegend);
     const close = el("button", "sbp-selection-close", "×");
     close.type = "button";
     close.title = "关闭本条分析";
@@ -435,12 +452,41 @@
     insertAfterAnchor(anchor, row);
     renderLoading(details);
 
+    let analysisData = null;
+    let annotationMode = "pos";
+    const renderSourceAnnotation = () => {
+      for (const [mode, tab] of Object.entries(tabs)) {
+        const active = mode === annotationMode;
+        tab.classList.toggle("is-active", active);
+        tab.setAttribute("aria-selected", active ? "true" : "false");
+      }
+      sourceLine.dataset.annotationMode = annotationMode;
+      if (!analysisData) return;
+      if (annotationMode === "structure") {
+        renderStructureColoredSentence(sourceLine, sentence, analysisData, structureLegend);
+      } else {
+        structureLegend.hidden = true;
+        structureLegend.replaceChildren();
+        renderPosColoredSentence(sourceLine, sentence, collectWordClasses(analysisData));
+      }
+    };
+    for (const [mode, tab] of Object.entries(tabs)) {
+      tab.addEventListener("click", () => {
+        annotationMode = mode;
+        renderSourceAnnotation();
+      });
+    }
+
     chrome.runtime
       .sendMessage({ type: "SBP_ANALYZE", sentence })
       .then((response) => {
         if (!response?.ok) throw new Error(response?.error || "分析失败");
-        renderAnalysis(details, response.data);
-        renderPosColoredSentence(sourceLine, sentence, collectWordClasses(response.data));
+        analysisData = response.data;
+        Object.values(tabs).forEach((tab) => {
+          tab.disabled = false;
+        });
+        renderAnalysis(details, analysisData);
+        renderSourceAnnotation();
       })
       .catch((error) => renderError(details, error.message));
   }
@@ -645,6 +691,136 @@
       return data.sentence_analyses.flatMap((item) => item.word_classes || []);
     }
     return Array.isArray(data?.word_classes) ? data.word_classes : [];
+  }
+
+  function collectAnalysisItems(data, key) {
+    if (Array.isArray(data?.sentence_analyses) && data.sentence_analyses.length) {
+      return data.sentence_analyses.flatMap((item) => (Array.isArray(item?.[key]) ? item[key] : []));
+    }
+    return Array.isArray(data?.[key]) ? data[key] : [];
+  }
+
+  function findSourceRange(source, rawText) {
+    const text = String(rawText || "").trim();
+    if (!text) return null;
+    const haystack = source.toLocaleLowerCase();
+    const needle = text.toLocaleLowerCase();
+    let cursor = 0;
+    while (cursor < source.length) {
+      const start = haystack.indexOf(needle, cursor);
+      if (start < 0) return null;
+      const end = start + text.length;
+      const firstIsWord = /[A-Za-z0-9]/.test(text[0] || "");
+      const lastIsWord = /[A-Za-z0-9]/.test(text.at(-1) || "");
+      const beforeIsWord = start > 0 && /[A-Za-z0-9]/.test(source[start - 1]);
+      const afterIsWord = end < source.length && /[A-Za-z0-9]/.test(source[end]);
+      if ((!firstIsWord || !beforeIsWord) && (!lastIsWord || !afterIsWord)) return { start, end };
+      cursor = start + 1;
+    }
+    return null;
+  }
+
+  function clauseStructureClassName(rawType) {
+    const type = String(rawType || "");
+    if (type.includes("状语从句")) return "sbp-structure-adverbial-clause";
+    if (type.includes("定语从句")) return "sbp-structure-relative-clause";
+    if (
+      type.includes("主语从句") ||
+      type.includes("宾语从句") ||
+      type.includes("表语从句") ||
+      type.includes("同位语从句") ||
+      type.includes("名词性从句")
+    ) {
+      return "sbp-structure-nominal-clause";
+    }
+    return "sbp-structure-other-clause";
+  }
+
+  function componentStructureClassName(rawRole) {
+    const role = normalizeRole(rawRole);
+    if (role === "S") return "sbp-structure-subject";
+    if (role === "V") return "sbp-structure-predicate";
+    if (["O", "IO", "DO"].includes(role)) return "sbp-structure-object";
+    if (["C", "SC", "OC"].includes(role)) return "sbp-structure-complement";
+    if (["Atr", "Adv", "App"].includes(role)) return "sbp-structure-modifier";
+    return "sbp-structure-connector";
+  }
+
+  function renderStructureLegend(container, items) {
+    container.replaceChildren();
+    const unique = new Map();
+    for (const item of items) {
+      if (item?.label && !unique.has(item.label)) unique.set(item.label, item.className);
+    }
+    for (const [label, className] of unique.entries()) {
+      const legendItem = el("span", `sbp-structure-legend-item ${className}`);
+      legendItem.append(el("span", "sbp-structure-swatch"), el("span", "", label));
+      container.append(legendItem);
+    }
+    container.hidden = unique.size === 0;
+  }
+
+  function renderStructureColoredSentence(container, sentence, data, legend) {
+    container.replaceChildren();
+    const source = String(sentence || "");
+    const clauses = collectAnalysisItems(data, "clauses");
+    let annotations = clauses
+      .map((item) => {
+        const range = findSourceRange(source, item?.text);
+        if (!range) return null;
+        const label = item?.type || "从句";
+        return { ...range, label, className: clauseStructureClassName(label) };
+      })
+      .filter(Boolean);
+    const clauseMode = annotations.length > 0;
+    const defaultAnnotation = clauseMode
+      ? { label: "主句", className: "sbp-structure-main-clause" }
+      : null;
+
+    if (!clauseMode) {
+      annotations = collectAnalysisItems(data, "components")
+        .map((item) => {
+          const range = findSourceRange(source, item?.text);
+          if (!range) return null;
+          const role = normalizeRole(item?.role);
+          return {
+            ...range,
+            label: ROLE_LABELS[role] || item?.label || role,
+            className: componentStructureClassName(role),
+          };
+        })
+        .filter(Boolean);
+    }
+
+    const boundaries = new Set([0, source.length]);
+    for (const item of annotations) {
+      boundaries.add(item.start);
+      boundaries.add(item.end);
+    }
+    const orderedBoundaries = [...boundaries].sort((left, right) => left - right);
+    const usedLegendItems = [];
+    if (defaultAnnotation) usedLegendItems.push(defaultAnnotation);
+
+    for (let index = 0; index < orderedBoundaries.length - 1; index += 1) {
+      const start = orderedBoundaries[index];
+      const end = orderedBoundaries[index + 1];
+      const text = source.slice(start, end);
+      if (!text) continue;
+      const matching = annotations
+        .filter((item) => item.start <= start && item.end >= end)
+        .sort((first, second) => (first.end - first.start) - (second.end - second.start));
+      const annotation = matching[0] || defaultAnnotation;
+      if (!annotation || !/[A-Za-z0-9]/.test(text)) {
+        container.append(document.createTextNode(text));
+        continue;
+      }
+      const span = el("span", `sbp-structure-token ${annotation.className}`, text);
+      span.title = annotation.label;
+      container.append(span);
+      usedLegendItems.push(annotation);
+    }
+    if (!container.childNodes.length) container.textContent = source;
+    renderStructureLegend(legend, usedLegendItems);
   }
 
   function renderPosColoredSentence(container, sentence, wordClasses) {
