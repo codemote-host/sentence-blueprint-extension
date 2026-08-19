@@ -1,0 +1,24 @@
+# Local configuration and generated data
+local_service/config.json
+local_service/*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# JavaScript
+node_modules/
+
+# Runtime output
+*.log
+*.pid
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>句子蓝图</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="logo">拆</span>
+        <div>
+          <h1>句子蓝图</h1>
+          <p>网页原文下方结构拆解</p>
+        </div>
+      </header>
+
+      <label class="switch-row">
+        <span>启用第三行</span>
+        <input id="enabled" type="checkbox" />
+      </label>
+      <label class="switch-row">
+        <span>自动分析</span>
+        <input id="autoAnalyze" type="checkbox" />
+      </label>
+
+      <button id="health" type="button">检查增强分析服务</button>
+      <p id="status" aria-live="polite"></p>
+      <a href="options.html" target="_blank">打开详细设置</a>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,115 @@
+# 句子蓝图：沉浸式翻译第三行
+
+> 0.3.3：分析块自动适配所在 HTML 区域；分析原句和词性标签按名词、动词、形容词、副词等类别着色，并为明暗主题使用不同色阶。
+
+这是一个独立的 Chrome Manifest V3 扩展。它不会修改或复制“沉浸式翻译”的代码，而是观察该扩展在网页中生成的译文节点，并在译文下面增加第三行“句子拆解”。
+
+## 当前功能
+
+- 识别 `.immersive-translate-target-wrapper` 与 `.immersive-translate-target-translation-block-wrapper`。
+- 在译文下自动增加一行可折叠的句子拆解入口。
+- 按“谓语 → 连词 → 主干 → 从句 → 非谓语 → 修饰成分”的顺序展示。
+- 区分句子成分与词性：主、谓、宾、表/补、定、状、同位语，以及名词、动词、形容词、副词等。
+- 支持右键或 `Alt+Shift+S` 拆解当前选中的英文。
+- 本地服务优先使用 Stanford Stanza，并保留基础规则作为服务异常时的降级方案。
+- 多句文本会自动分句并逐句展示，原始依存关系和成分树随分析结果缓存。
+- 使用 SQLite 缓存已分析句子。
+
+## 目录
+
+```text
+extension/       Chrome 扩展本体
+local_service/   Stanza 适配、教学标签转换与本地服务
+demo/            模拟沉浸式翻译 DOM 的测试页
+tests/           本地服务测试
+```
+
+## 1. 启动分析服务
+
+在 PowerShell 中运行：
+
+```powershell
+cd "C:\Users\极客\Documents\personal study\sentence-blueprint-extension"
+.\start_service.ps1
+```
+
+默认地址：`http://127.0.0.1:8765`。
+
+健康检查：
+
+```text
+http://127.0.0.1:8765/health
+```
+
+启动脚本优先使用 `D:\sentence-blueprint-runtime\.venv`。当前配置启用 Stanford Stanza；如果模型加载失败，服务会回退到内置规则，并在结果中显示警告。
+
+重新安装或迁移运行环境时执行：
+
+```powershell
+.\install_stanza_runtime.ps1
+```
+
+Stanza 模型目录约 0.42GB，整个 D 盘运行环境约 1.11GB。模型文件可以复制迁移，Python 虚拟环境建议在新机器上用安装脚本重新创建。
+
+## 2. 加载 Chrome 扩展
+
+1. 打开 `chrome://extensions`。
+2. 开启右上角“开发者模式”。
+3. 点击“加载已解压的扩展程序”。
+4. 选择：
+
+```text
+C:\Users\极客\Documents\personal study\sentence-blueprint-extension\extension
+```
+
+5. 保持“沉浸式翻译”启用，刷新要阅读的网页。
+
+## 3. 使用方法
+
+- 沉浸式翻译生成译文后，译文下方会出现蓝色“句子拆解”行。
+- 点击该行生成并展开分析。
+- 再次点击可收起。
+- 任意网页选中一句英文后，可以右键选择“用句子蓝图拆解”，或按 `Alt+Shift+S`。
+
+## 4. 可选 AI 复核配置
+
+复制配置文件：
+
+```powershell
+Copy-Item .\local_service\config.example.json .\local_service\config.json
+```
+
+示例：
+
+```json
+{
+  "provider": "openai_compatible",
+  "api_url": "http://127.0.0.1:11434/v1/chat/completions",
+  "model": "your-model-name",
+  "api_key_env": "SBP_API_KEY",
+  "timeout_seconds": 90
+}
+```
+
+兼容本地或远程的 Chat Completions 风格接口。远程服务请使用 HTTPS，且不要把 API Key 写进 Chrome 扩展文件。
+
+## 5. 测试
+
+```powershell
+$python = "D:\sentence-blueprint-runtime\.venv\Scripts\python.exe"
+& $python -m unittest discover -s .\tests -v
+```
+
+静态检查：
+
+```powershell
+$node = "C:\Users\极客\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
+& $node --check .\extension\content.js
+& $node --check .\extension\service-worker.js
+```
+
+## 设计边界
+
+- Stanza 提供统计语法树，但不能保证每个领域句子都正确；人工纠正仍应进入 SQLite 金标准库和回归测试。
+- 网页正文只发送用户点击分析的句子，不上传整页内容。
+- 译文节点选择器可能随沉浸式翻译升级而变化，因此选择器集中定义在 `extension/content.js` 顶部，便于维护。

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN" imt-state="dual">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>句子蓝图测试页</title>
+    <style>
+      body { max-width: 850px; margin: 40px auto; padding: 0 20px; color: #1f2937; font: 17px/1.8 system-ui, sans-serif; }
+      article { display: grid; gap: 24px; }
+      p { padding: 18px; border: 1px solid #e2e8f0; border-radius: 12px; }
+      .immersive-translate-target-translation-block-wrapper { display: block; margin: 8px 0; color: #475569; }
+    </style>
+  </head>
+  <body>
+    <h1>句子蓝图 · 模拟沉浸式翻译 DOM</h1>
+    <p>启动本地服务并加载扩展后，下面每条译文下方应出现第三行。</p>
+    <article>
+      <p data-immersive-translate-source-text="The teacher asked the students to review the lesson before the test.">
+        The teacher asked the students to review the lesson before the test.
+        <span class="immersive-translate-target-translation-block-wrapper">
+          <span class="immersive-translate-target-wrapper">
+            <span class="immersive-translate-target-inner">老师要求学生们在考试前复习这节课。</span>
+          </span>
+        </span>
+      </p>
+
+      <p data-immersive-translate-source-text="My father bought me a new phone.">
+        My father bought me a new phone.
+        <span class="immersive-translate-target-translation-block-wrapper">
+          <span class="immersive-translate-target-wrapper">
+            <span class="immersive-translate-target-inner">我父亲给我买了一部新手机。</span>
+          </span>
+        </span>
+      </p>
+
+      <p data-immersive-translate-source-text="Reading short articles every day improves your ability to find the main idea.">
+        Reading short articles every day improves your ability to find the main idea.
+        <span class="immersive-translate-target-translation-block-wrapper">
+          <span class="immersive-translate-target-wrapper">
+            <span class="immersive-translate-target-inner">每天阅读短文可以提升你找出文章主旨的能力。</span>
+          </span>
+        </span>
+      </p>
+    </article>
+  </body>
+</html>
+

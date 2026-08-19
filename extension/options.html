@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>句子蓝图设置</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="logo">拆</span>
+        <div>
+          <h1>句子蓝图设置</h1>
+          <p>在沉浸式翻译译文下生成第三行结构分析。</p>
+        </div>
+      </header>
+
+      <section>
+        <h2>显示</h2>
+        <label><input id="enabled" type="checkbox" /> 启用第三行</label>
+        <label><input id="autoAnalyze" type="checkbox" /> 译文出现后自动分析</label>
+        <label><input id="showWordClasses" type="checkbox" /> 展示词性层</label>
+        <label><input id="showExplanations" type="checkbox" /> 展示“为什么”</label>
+      </section>
+
+      <section>
+        <h2>本地分析服务</h2>
+        <label class="field">
+          <span>分析地址</span>
+          <input id="analyzerUrl" type="url" />
+        </label>
+        <label class="field">
+          <span>最大句子长度</span>
+          <input id="maxSentenceLength" type="number" min="100" max="10000" />
+        </label>
+        <p class="hint">本地服务可提供更完整的复杂句分析；未启动时会自动使用浏览器内置基础分析。</p>
+      </section>
+
+      <section>
+        <h2>诊断日志</h2>
+        <p class="hint">最多保留最近 50 条服务连接错误，只存储在本机扩展数据中。</p>
+        <pre id="diagnosticLogs">暂无错误日志。</pre>
+        <button id="clearLogs" class="secondary compact" type="button">清空日志</button>
+      </section>
+
+      <div class="actions">
+        <button id="save" type="button">保存设置</button>
+        <button id="health" class="secondary" type="button">检查服务</button>
+      </div>
+      <p id="status" aria-live="polite"></p>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

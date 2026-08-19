@@ -1,0 +1,12 @@
+{
+  "provider": "stanza",
+  "api_url": "http://127.0.0.1:11434/v1/chat/completions",
+  "model": "your-model-name",
+  "api_key_env": "SBP_API_KEY",
+  "timeout_seconds": 90,
+  "host": "127.0.0.1",
+  "port": 8765,
+  "stanza_model_dir": "D:\\sentence-blueprint-runtime\\stanza_resources",
+  "stanza_processors": "tokenize,pos,lemma,depparse,constituency",
+  "stanza_use_gpu": false
+}

@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "句子蓝图 · 沉浸式翻译第三行",
+  "short_name": "句子蓝图",
+  "description": "在沉浸式翻译译文下增加一行英语句子结构拆解。",
+  "version": "0.3.3",
+  "permissions": [
+    "storage",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "句子蓝图",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "commands": {
+    "analyze-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
+      "description": "拆解当前选中的英文句子"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}
