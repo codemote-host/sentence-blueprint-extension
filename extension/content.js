@@ -318,6 +318,11 @@
       return `${item.text || ""}${label ? `｜${label}` : ""}`;
     });
 
+    renderListSection(container, "并列结构", data.parallel_structures, (item) => {
+      const detail = [item.category && `${item.category}并列`, item.explanation].filter(Boolean).join(" · ");
+      return `${item.text || ""}${detail ? `｜${detail}` : ""}`;
+    });
+
     renderListSection(container, "非谓语", data.non_finite, (item) => {
       const detail = [item.form, item.function, item.logical_subject && `逻辑主语：${item.logical_subject}`]
         .filter(Boolean)

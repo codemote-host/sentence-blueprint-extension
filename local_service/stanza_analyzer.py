@@ -29,7 +29,9 @@ ADVERBIAL_TYPES = {
 MODALS = {"can", "could", "may", "might", "must", "shall", "should", "will", "would", "ought"}
 CLAUSE_RELATIONS = {"advcl", "acl:relcl", "ccomp", "csubj", "csubj:pass"}
 INDEPENDENT_CLAUSE_RELATIONS = {"conj", "parataxis"}
-HYPHEN_CHARS = {"-", "‐", "‑", "‒", "–", "—"}
+# Only characters that can join a written compound belong here. Figure/en/em
+# dashes separate phrases and must not turn ``cache—every`` into one word unit.
+HYPHEN_CHARS = {"-", "‐", "‑"}
 COMPOUND_MODIFIER_RELATIONS = {"amod", "compound", "acl"}
 COMMENT_ADVERBS = {
     "personally", "again", "frankly", "honestly", "fortunately", "unfortunately",
@@ -220,7 +222,69 @@ def _hyphenated_groups(source: str, words: list[Any], children: dict[int, list[A
     return groups
 
 
-def _teaching_word_classes(source: str, sentence: Any, words: list[Any], children: dict[int, list[Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _parallel_pos_reconciliation(
+    source: str,
+    words: list[Any],
+    children: dict[int, list[Any]],
+) -> tuple[dict[int, str], list[dict[str, Any]]]:
+    """Reconcile safe learner-facing POS mismatches inside coordination.
+
+    Stanza keeps its original UPOS output in ``raw_word_classes``. This pass
+    uses the dependency tree to improve the high-school-grammar presentation.
+    It deliberately handles only high-confidence cases instead of assuming
+    that every pair joined by a conjunction must share a lexical category.
+    """
+    words_by_id = {word.id: word for word in words}
+    overrides: dict[int, str] = {}
+    structures: list[dict[str, Any]] = []
+    for right in words:
+        if right.deprel != "conj" or right.head not in words_by_id:
+            continue
+        left = words_by_id[right.head]
+        connector = next(
+            (
+                child
+                for child in children.get(right.id, [])
+                if child.deprel == "cc" and str(child.lemma or child.text).lower() in {"and", "or", "nor", "but"}
+            ),
+            None,
+        )
+        if connector is None:
+            continue
+
+        # In expressions such as "switch ... on or off", Stanza may label the
+        # first item ADP and the second ADV. The tree supplies stronger evidence:
+        # both are coordinated, and the ADP-shaped item functions adverbially
+        # without a nominal complement.
+        if {left.upos, right.upos} != {"ADP", "ADV"}:
+            continue
+        adposition = left if left.upos == "ADP" else right
+        has_nominal_complement = any(
+            child.deprel in {"case", "fixed", "nmod", "obl", "obj"}
+            and child.upos in {"NOUN", "PROPN", "PRON", "NUM"}
+            for child in children.get(adposition.id, [])
+        )
+        if adposition.deprel not in {"advmod", "compound:prt"} or has_nominal_complement:
+            continue
+
+        overrides[left.id] = "副词"
+        overrides[right.id] = "副词"
+        structures.append({
+            "text": _span_text(source, words_by_id, {left.id, connector.id, right.id}),
+            "connector": connector.text,
+            "category": "副词",
+            "members": [left.text, right.text],
+            "explanation": f"{connector.text} 连接两个并列状态词；{left.text}/{right.text} 在此都作副词。",
+        })
+    return overrides, structures
+
+
+def _teaching_word_classes(
+    source: str,
+    sentence: Any,
+    words: list[Any],
+    children: dict[int, list[Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Return display units plus the unmodified Stanza token-level word classes."""
     raw: list[dict[str, Any]] = []
     token_units: list[dict[str, Any]] = []
@@ -236,9 +300,15 @@ def _teaching_word_classes(source: str, sentence: Any, words: list[Any], childre
         raw.append(item)
         token_units.append({
             **item,
+            "word_id": primary.id,
             "start": token.start_char,
             "end": token.end_char,
         })
+
+    pos_overrides, parallel_structures = _parallel_pos_reconciliation(source, words, children)
+    for item in token_units:
+        if item["word_id"] in pos_overrides:
+            item["pos"] = pos_overrides[item["word_id"]]
 
     groups = _hyphenated_groups(source, words, children)
     groups_by_start = {item["start"]: item for item in groups}
@@ -251,7 +321,7 @@ def _teaching_word_classes(source: str, sentence: Any, words: list[Any], childre
         if any(group["start"] < item["start"] < group["end"] for group in groups):
             continue
         display.append({"text": item["text"], "pos": item["pos"]})
-    return display, raw
+    return display, raw, parallel_structures
 
 
 def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
@@ -417,7 +487,7 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
             "logical_subject": logical_subject,
         })
 
-    word_classes, raw_word_classes = _teaching_word_classes(source, sentence, words, children)
+    word_classes, raw_word_classes, parallel_structures = _teaching_word_classes(source, sentence, words, children)
 
     roles = [component["role"] for component in components]
     if copulas:
@@ -447,6 +517,7 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
         "components": cleaned_components,
         "predicates": cleaned_predicates,
         "clauses": clauses,
+        "parallel_structures": parallel_structures,
         "non_finite": non_finite,
         "word_classes": word_classes,
         "raw_word_classes": raw_word_classes,
@@ -478,6 +549,7 @@ def analyze_document(pipeline: Any, source: str, prompt_version: str) -> dict[st
         "components": [],
         "predicates": [],
         "clauses": [],
+        "parallel_structures": [],
         "non_finite": [],
         "word_classes": [],
         "explanations": ["Stanza 已先自动分句，再分别分析每句话。"],

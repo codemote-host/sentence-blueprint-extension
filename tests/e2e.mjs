@@ -95,6 +95,43 @@ try {
               },
             };
           }
+          if (message.sentence === "Switch fast mode on or off.") {
+            return {
+              ok: true,
+              data: {
+                sentence: message.sentence,
+                analysis_method: "Stanford Stanza",
+                pattern: "SVO",
+                skeleton: "Switch + fast mode",
+                components: [
+                  { text: "Switch", role: "V", label: "谓语", explanation: "祈使句谓语" },
+                  { text: "fast mode", role: "O", label: "宾语", explanation: "宾语" },
+                  { text: "on or off", role: "Adv", label: "状语", explanation: "并列状态" },
+                ],
+                predicates: [{ text: "Switch", tense: "一般现在时", voice: "主动", type: "动词谓语" }],
+                clauses: [],
+                parallel_structures: [{
+                  text: "on or off",
+                  connector: "or",
+                  category: "副词",
+                  members: ["on", "off"],
+                  explanation: "or 连接两个并列状态词；on/off 在此都作副词。",
+                }],
+                non_finite: [],
+                word_classes: [
+                  { text: "Switch", pos: "动词" },
+                  { text: "fast", pos: "形容词" },
+                  { text: "mode", pos: "名词" },
+                  { text: "on", pos: "副词" },
+                  { text: "or", pos: "并列连词" },
+                  { text: "off", pos: "副词" },
+                ],
+                explanations: [],
+                warnings: [],
+                confidence: 0.9,
+              },
+            };
+          }
           if (message.sentence === "Because Docker controls the virtualization layer, it can be monitored in ways that aren't possible.") {
             return {
               ok: true,
@@ -345,6 +382,33 @@ try {
 
   await page.evaluate(() => {
     const paragraph = document.createElement("p");
+    paragraph.id = "parallel-pos-example";
+    paragraph.textContent = "Switch fast mode on or off.";
+    document.querySelector("article").append(paragraph);
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    globalThis.__sbpDispatch({ type: "SBP_ANALYZE_SELECTION", sentence: paragraph.textContent });
+  });
+  const parallelInline = page.locator("#parallel-pos-example + .sbp-selection-inline");
+  await parallelInline.locator(".sbp-component").first().waitFor({ timeout: 15_000 });
+  const parallelResult = await parallelInline.evaluate((node) => ({
+    adverbs: [...node.querySelectorAll(".sbp-pos-chip.sbp-pos-adverb")].map((item) => item.textContent),
+    details: node.querySelector(".sbp-details")?.textContent || "",
+  }));
+  if (
+    !parallelResult.adverbs.some((item) => item.includes("on")) ||
+    !parallelResult.adverbs.some((item) => item.includes("off")) ||
+    !parallelResult.details.includes("并列结构") ||
+    !parallelResult.details.includes("on or off")
+  ) {
+    throw new Error(`并列词性校正未正确渲染：${JSON.stringify(parallelResult)}`);
+  }
+
+  await page.evaluate(() => {
+    const paragraph = document.createElement("p");
     paragraph.id = "clause-structure-example";
     paragraph.textContent = "Because Docker controls the virtualization layer, it can be monitored in ways that aren't possible.";
     document.querySelector("article").append(paragraph);
@@ -520,7 +584,7 @@ try {
   await discourseInline.screenshot({ path: path.join(artifactDir, "multi-sentence-structure-demo.png") });
   await page.screenshot({ path: path.join(artifactDir, "third-line-demo.png"), fullPage: true });
 
-  process.stdout.write(`E2E OK：多句分层、评注性状语、独立句、双视图与主题切换均通过。\n`);
+  process.stdout.write(`E2E OK：并列词性、多句分层、评注性状语、独立句、双视图与主题切换均通过。\n`);
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));

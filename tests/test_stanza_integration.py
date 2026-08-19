@@ -74,6 +74,29 @@ class StanzaIntegrationTests(unittest.TestCase):
         self.assertEqual(raw_items["high"], "形容词")
         self.assertEqual(raw_items["performance"], "名词")
 
+    def test_parallel_on_or_off_is_reconciled_without_changing_raw_stanza_pos(self):
+        result = server.analyze_with_stanza(
+            "The real answer is actually that every single reasoning effort change completely destroys "
+            "the cache—every single one, and so does switching fast mode on or off.",
+            self.config,
+        )
+
+        display_items = {item["text"]: item["pos"] for item in result["word_classes"]}
+        self.assertEqual(display_items["on"], "副词")
+        self.assertEqual(display_items["off"], "副词")
+        self.assertNotIn("cache—every", display_items)
+        self.assertIn("cache", display_items)
+        self.assertIn("every", display_items)
+
+        raw_items = {item["text"]: item["pos"] for item in result["raw_word_classes"]}
+        self.assertEqual(raw_items["on"], "介词")
+        self.assertEqual(raw_items["off"], "副词")
+        self.assertIn(
+            {"text": "on or off", "connector": "or", "category": "副词", "members": ["on", "off"],
+             "explanation": "or 连接两个并列状态词；on/off 在此都作副词。"},
+            result["parallel_structures"],
+        )
+
     def test_comment_adverbs_and_independent_clauses(self):
         result = server.analyze_with_stanza(
             "Personally, I had it in mind that OpenAI's infra was better than that, and more: "
