@@ -63,6 +63,38 @@ try {
         onMessage: { addListener: (listener) => runtimeListeners.push(listener) },
         sendMessage: async (message) => {
           if (message?.type !== "SBP_ANALYZE") return { ok: false, error: "Unsupported" };
+          if (message.sentence === "Apache Doris is a high-performance, real-time analytical database.") {
+            return {
+              ok: true,
+              data: {
+                sentence: message.sentence,
+                analysis_method: "Stanford Stanza",
+                pattern: "SVC",
+                skeleton: "Apache Doris + is + a high-performance, real-time analytical database",
+                components: [
+                  { text: "Apache Doris", role: "S", label: "主语", explanation: "主语" },
+                  { text: "is", role: "V", label: "谓语", explanation: "系动词" },
+                  { text: "a high-performance, real-time analytical database", role: "SC", label: "表语/主补", explanation: "表语" },
+                ],
+                predicates: [{ text: "is", tense: "一般现在时", voice: "主动", type: "系动词谓语" }],
+                clauses: [],
+                non_finite: [],
+                word_classes: [
+                  { text: "Apache", pos: "专有名词" },
+                  { text: "Doris", pos: "专有名词" },
+                  { text: "is", pos: "助动词/系动词" },
+                  { text: "a", pos: "限定词" },
+                  { text: "high-performance", pos: "复合形容词（作定语）" },
+                  { text: "real-time", pos: "复合形容词（作定语）" },
+                  { text: "analytical", pos: "形容词" },
+                  { text: "database", pos: "名词" },
+                ],
+                explanations: [],
+                warnings: [],
+                confidence: 0.9,
+              },
+            };
+          }
           return { ok: true, data: globalThis.SentenceBlueprintFallback.analyze(message.sentence) };
         },
       },
@@ -96,7 +128,7 @@ try {
       sentence: "My father bought me a new phone.",
     });
   });
-  const inline = page.locator(".sbp-selection-inline");
+  const inline = page.locator(".sbp-selection-inline").first();
   await inline.locator(".sbp-component").first().waitFor({ timeout: 15_000 });
   const posColors = await inline.evaluate((node) => {
     const source = node.querySelector(".sbp-selection-source");
@@ -128,6 +160,43 @@ try {
     throw new Error(`选中分析未插入原段落下方：${JSON.stringify(placement)}`);
   }
   if (placement.position === "fixed") throw new Error("选中分析仍然是 fixed 浮窗");
+
+  await page.evaluate(() => {
+    const paragraph = document.createElement("p");
+    paragraph.id = "hyphenated-compound-example";
+    paragraph.textContent = "Apache Doris is a high-performance, real-time analytical database.";
+    document.querySelector("article").append(paragraph);
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    globalThis.__sbpDispatch({
+      type: "SBP_ANALYZE_SELECTION",
+      sentence: paragraph.textContent,
+    });
+  });
+  const compoundInline = page.locator("#hyphenated-compound-example + .sbp-selection-inline");
+  await compoundInline.locator(".sbp-component").first().waitFor({ timeout: 15_000 });
+  const compounds = await compoundInline.evaluate((node) => {
+    const source = node.querySelector(".sbp-selection-source");
+    const sourceTokens = [...(source?.querySelectorAll(".sbp-pos-token") || [])].map((item) => ({
+      text: item.textContent,
+      title: item.title,
+      adjective: item.classList.contains("sbp-pos-adjective"),
+    }));
+    const chips = [...node.querySelectorAll(".sbp-pos-chip")].map((item) => item.textContent);
+    return { sourceTokens, chips };
+  });
+  for (const phrase of ["high-performance", "real-time"]) {
+    const token = compounds.sourceTokens.find((item) => item.text === phrase);
+    if (!token?.adjective || token.title !== "复合形容词（作定语）" || !compounds.chips.some((item) => item.includes(phrase))) {
+      throw new Error(`连字符复合形容词被错误拆开：${JSON.stringify(compounds)}`);
+    }
+  }
+  if (compounds.chips.some((item) => item === "high 形容词" || item === "performance 名词")) {
+    throw new Error(`词性层仍显示连字符复合词的内部碎片：${JSON.stringify(compounds)}`);
+  }
   const lightTheme = await inline.evaluate((node) => ({
     isLight: node.classList.contains("sbp-theme-light"),
     background: getComputedStyle(node.querySelector(".sbp-details")).backgroundColor,

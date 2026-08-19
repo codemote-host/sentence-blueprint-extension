@@ -59,6 +59,21 @@ class StanzaIntegrationTests(unittest.TestCase):
         self.assertEqual(result["pattern"], "SVO")
         self.assertEqual(result["clauses"], [])
 
+    def test_hyphenated_modifiers_are_merged_for_teaching(self):
+        result = server.analyze_with_stanza(
+            "Apache Doris is a high-performance, real-time analytical database.",
+            self.config,
+        )
+        display_items = {item["text"]: item["pos"] for item in result["word_classes"]}
+        self.assertEqual(display_items["high-performance"], "复合形容词（作定语）")
+        self.assertEqual(display_items["real-time"], "复合形容词（作定语）")
+        self.assertNotIn("high", display_items)
+        self.assertNotIn("performance", display_items)
+
+        raw_items = {item["text"]: item["pos"] for item in result["raw_word_classes"]}
+        self.assertEqual(raw_items["high"], "形容词")
+        self.assertEqual(raw_items["performance"], "名词")
+
 
 if __name__ == "__main__":
     unittest.main()

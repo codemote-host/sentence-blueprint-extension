@@ -28,6 +28,8 @@ ADVERBIAL_TYPES = {
 
 MODALS = {"can", "could", "may", "might", "must", "shall", "should", "will", "would", "ought"}
 CLAUSE_RELATIONS = {"advcl", "acl:relcl", "ccomp", "csubj", "csubj:pass"}
+HYPHEN_CHARS = {"-", "‐", "‑", "‒", "–", "—"}
+COMPOUND_MODIFIER_RELATIONS = {"amod", "compound", "acl"}
 
 
 def _children(words: list[Any]) -> dict[int, list[Any]]:
@@ -117,6 +119,115 @@ def _finite_head(word: Any, children: dict[int, list[Any]]) -> bool:
     if "VerbForm=Fin" in feats:
         return True
     return any("VerbForm=Fin" in (child.feats or "") for child in children.get(word.id, []) if child.deprel in {"aux", "aux:pass", "cop"})
+
+
+def _is_hyphen(word: Any) -> bool:
+    return str(word.text) in HYPHEN_CHARS
+
+
+def _touches_in_source(source: str, left: Any, right: Any) -> bool:
+    """Return true only for a contiguous written form such as high-performance."""
+    return source[left.end_char:right.start_char] == ""
+
+
+def _hyphenated_groups(source: str, words: list[Any], children: dict[int, list[Any]]) -> list[dict[str, Any]]:
+    """Create learner-facing units for contiguous hyphenated compounds.
+
+    Universal Dependencies intentionally keeps the members of a compound separate
+    (for example, high/ADJ + -/PUNCT + performance/NOUN).  That is valuable raw
+    parsing data, but it is confusing when teaching the phrase as one modifier.
+    """
+    groups: list[dict[str, Any]] = []
+    ordered = sorted(words, key=lambda item: item.start_char)
+    cursor = 0
+    while cursor < len(ordered):
+        first = ordered[cursor]
+        if _is_hyphen(first) or first.upos == "PUNCT":
+            cursor += 1
+            continue
+
+        end_index = cursor
+        has_hyphen = False
+        while end_index + 2 < len(ordered):
+            hyphen = ordered[end_index + 1]
+            following = ordered[end_index + 2]
+            if (
+                not _is_hyphen(hyphen)
+                or following.upos == "PUNCT"
+                or not _touches_in_source(source, ordered[end_index], hyphen)
+                or not _touches_in_source(source, hyphen, following)
+            ):
+                break
+            end_index += 2
+            has_hyphen = True
+
+        if not has_hyphen:
+            cursor += 1
+            continue
+
+        members = ordered[cursor:end_index + 1]
+        lexical_members = [item for item in members if not _is_hyphen(item)]
+        member_ids = {item.id for item in members}
+        external_head = next(
+            (item for item in reversed(lexical_members) if item.head not in member_ids),
+            lexical_members[-1],
+        )
+        relation = str(external_head.deprel or "")
+        has_copula = any(child.deprel == "cop" for child in children.get(external_head.id, []))
+        adjective_like = any(item.upos == "ADJ" for item in lexical_members) or external_head.upos == "VERB"
+        if relation in COMPOUND_MODIFIER_RELATIONS:
+            label = "复合形容词（作定语）"
+        elif has_copula or adjective_like:
+            label = "复合形容词"
+        else:
+            label = "连字符复合词"
+
+        groups.append({
+            "start": first.start_char,
+            "end": members[-1].end_char,
+            "text": source[first.start_char:members[-1].end_char],
+            "pos": label,
+            "parts": [
+                {"text": item.text, "pos": POS_ZH.get(item.upos, item.upos)}
+                for item in lexical_members
+            ],
+        })
+        cursor = end_index + 1
+    return groups
+
+
+def _teaching_word_classes(source: str, sentence: Any, words: list[Any], children: dict[int, list[Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return display units plus the unmodified Stanza token-level word classes."""
+    raw: list[dict[str, Any]] = []
+    token_units: list[dict[str, Any]] = []
+    for token in sentence.tokens:
+        token_words = list(token.words)
+        primary = next((word for word in token_words if word.upos not in {"PUNCT", "PART"}), token_words[0])
+        if primary.upos == "PUNCT":
+            continue
+        item = {
+            "text": token.text,
+            "pos": POS_ZH.get(primary.upos, primary.upos),
+        }
+        raw.append(item)
+        token_units.append({
+            **item,
+            "start": token.start_char,
+            "end": token.end_char,
+        })
+
+    groups = _hyphenated_groups(source, words, children)
+    groups_by_start = {item["start"]: item for item in groups}
+    display: list[dict[str, Any]] = []
+    for item in token_units:
+        group = groups_by_start.get(item["start"])
+        if group:
+            display.append({key: value for key, value in group.items() if key not in {"start", "end"}})
+            continue
+        if any(group["start"] < item["start"] < group["end"] for group in groups):
+            continue
+        display.append({"text": item["text"], "pos": item["pos"]})
+    return display, raw
 
 
 def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
@@ -257,16 +368,7 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
             "logical_subject": logical_subject,
         })
 
-    word_classes: list[dict[str, Any]] = []
-    for token in sentence.tokens:
-        token_words = list(token.words)
-        primary = next((word for word in token_words if word.upos not in {"PUNCT", "PART"}), token_words[0])
-        if primary.upos == "PUNCT":
-            continue
-        word_classes.append({
-            "text": token.text,
-            "pos": POS_ZH.get(primary.upos, primary.upos),
-        })
+    word_classes, raw_word_classes = _teaching_word_classes(source, sentence, words, children)
 
     roles = [component["role"] for component in components]
     if copulas:
@@ -298,6 +400,7 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
         "clauses": clauses,
         "non_finite": non_finite,
         "word_classes": word_classes,
+        "raw_word_classes": raw_word_classes,
         "explanations": [
             "Stanza 先生成依存树和成分树，再映射为主谓宾补定状同。",
             "判断顺序：有限谓语 → 连接词与标点 → 主句主干 → 从句和修饰成分。",

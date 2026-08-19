@@ -18,7 +18,7 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "config.json"
 CACHE_PATH = BASE_DIR / "sentence_blueprint_cache.sqlite3"
-PROMPT_VERSION = "2026-08-19-stanza-v2-word-pos-only"
+PROMPT_VERSION = "2026-08-19-stanza-v3-hyphenated-compounds"
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "provider": "stanza",
