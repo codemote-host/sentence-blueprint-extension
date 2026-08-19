@@ -3,7 +3,7 @@
   "name": "句子蓝图 · 沉浸式翻译第三行",
   "short_name": "句子蓝图",
   "description": "在沉浸式翻译译文下增加一行英语句子结构拆解。",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "permissions": [
     "storage",
     "contextMenus"

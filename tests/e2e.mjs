@@ -141,6 +141,41 @@ try {
       },
     };
     globalThis.__sbpDispatch = (message) => runtimeListeners.forEach((listener) => listener(message));
+    globalThis.__sbpSampleRolePalette = (host) => {
+      const parseColor = (value) => {
+        const channels = String(value).match(/[\d.]+/g)?.slice(0, 3).map(Number) || [0, 0, 0];
+        return { r: channels[0], g: channels[1], b: channels[2] };
+      };
+      const luminance = (value) => {
+        const color = parseColor(value);
+        const channel = (number) => {
+          const normalized = number / 255;
+          return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b);
+      };
+      const result = {};
+      for (const role of ["S", "V", "O", "C", "Atr", "Adv", "App", "Conj"]) {
+        const sample = document.createElement("span");
+        sample.className = `sbp-component sbp-role-${role}`;
+        sample.textContent = role;
+        host.append(sample);
+        const style = getComputedStyle(sample);
+        const foreground = style.color;
+        const background = style.backgroundColor;
+        const foregroundLuminance = luminance(foreground);
+        const backgroundLuminance = luminance(background);
+        result[role] = {
+          foreground,
+          background,
+          backgroundLuminance,
+          contrast: (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+            (Math.min(foregroundLuminance, backgroundLuminance) + 0.05),
+        };
+        sample.remove();
+      }
+      return result;
+    };
   });
   await page.goto(`http://127.0.0.1:${address.port}/`, { waitUntil: "domcontentloaded" });
   await page.addStyleTag({ path: contentStylePath });
@@ -298,8 +333,22 @@ try {
   const lightTheme = await inline.evaluate((node) => ({
     isLight: node.classList.contains("sbp-theme-light"),
     background: getComputedStyle(node.querySelector(".sbp-details")).backgroundColor,
+    rolePalette: globalThis.__sbpSampleRolePalette(node),
   }));
-  if (!lightTheme.isLight || !lightTheme.background.includes("255, 255, 255")) {
+  const expectedLightRoleBackgrounds = {
+    S: "rgb(219, 234, 254)",
+    V: "rgb(255, 228, 230)",
+    O: "rgb(204, 251, 241)",
+    C: "rgb(243, 232, 255)",
+    Atr: "rgb(224, 242, 254)",
+    Adv: "rgb(254, 243, 199)",
+    App: "rgb(224, 231, 255)",
+    Conj: "rgb(243, 244, 246)",
+  };
+  const lightPaletteValid = Object.entries(expectedLightRoleBackgrounds).every(
+    ([role, background]) => lightTheme.rolePalette[role]?.background === background && lightTheme.rolePalette[role]?.contrast >= 4.5,
+  );
+  if (!lightTheme.isLight || !lightTheme.background.includes("255, 255, 255") || !lightPaletteValid) {
     throw new Error(`系统为深色偏好时未跟随白色网页：${JSON.stringify(lightTheme)}`);
   }
 
@@ -327,8 +376,22 @@ try {
     isDark: node.classList.contains("sbp-theme-dark"),
     fontFamily: getComputedStyle(node).fontFamily,
     background: getComputedStyle(node.querySelector(".sbp-details")).backgroundColor,
+    rolePalette: globalThis.__sbpSampleRolePalette(node),
   }));
-  if (!darkTheme.isDark || !darkTheme.fontFamily.includes("Georgia")) {
+  const expectedDarkRoleBackgrounds = {
+    S: "rgb(23, 37, 84)",
+    V: "rgb(76, 5, 25)",
+    O: "rgb(19, 78, 74)",
+    C: "rgb(59, 7, 100)",
+    Atr: "rgb(12, 74, 110)",
+    Adv: "rgb(69, 26, 3)",
+    App: "rgb(49, 46, 129)",
+    Conj: "rgb(55, 65, 81)",
+  };
+  const darkPaletteValid = Object.entries(expectedDarkRoleBackgrounds).every(
+    ([role, background]) => darkTheme.rolePalette[role]?.background === background && darkTheme.rolePalette[role]?.contrast >= 4.5,
+  );
+  if (!darkTheme.isDark || !darkTheme.fontFamily.includes("Georgia") || !darkPaletteValid) {
     throw new Error(`深色局部区域未继承页面主题：${JSON.stringify(darkTheme)}`);
   }
   await page.locator("#dark-host-section").evaluate((node) => {
@@ -340,8 +403,13 @@ try {
   const switchedTheme = await darkInline.evaluate((node) => ({
     isLight: node.classList.contains("sbp-theme-light"),
     fontFamily: getComputedStyle(node).fontFamily,
+    subjectBackground: globalThis.__sbpSampleRolePalette(node).S.background,
   }));
-  if (!switchedTheme.isLight || !switchedTheme.fontFamily.includes("Arial")) {
+  if (
+    !switchedTheme.isLight ||
+    !switchedTheme.fontFamily.includes("Arial") ||
+    switchedTheme.subjectBackground !== expectedLightRoleBackgrounds.S
+  ) {
     throw new Error(`网页运行时切换主题后未自动刷新：${JSON.stringify(switchedTheme)}`);
   }
   await page.locator("#dark-host-section").evaluate((node) => {
@@ -356,7 +424,7 @@ try {
   await structureInline.screenshot({ path: path.join(artifactDir, "structure-view-demo.png") });
   await page.screenshot({ path: path.join(artifactDir, "third-line-demo.png"), fullPage: true });
 
-  process.stdout.write(`E2E OK：词性/句子结构双视图、主题适配与连字符复合词均通过。\n`);
+  process.stdout.write(`E2E OK：双视图、夜间成分配色、主题切换与连字符复合词均通过。\n`);
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));

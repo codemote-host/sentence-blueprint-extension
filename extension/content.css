@@ -460,6 +460,58 @@
   background: color-mix(in srgb, var(--sbp-surface) 72%, transparent) !important;
 }
 
+.sbp-theme-dark .sbp-role-S {
+  color: #bfdbfe !important;
+  background: #172554 !important;
+  border-color: #3b82f6 !important;
+}
+
+.sbp-theme-dark .sbp-role-V {
+  color: #fecdd3 !important;
+  background: #4c0519 !important;
+  border-color: #be123c !important;
+}
+
+.sbp-theme-dark .sbp-role-O,
+.sbp-theme-dark .sbp-role-IO,
+.sbp-theme-dark .sbp-role-DO {
+  color: #99f6e4 !important;
+  background: #134e4a !important;
+  border-color: #14b8a6 !important;
+}
+
+.sbp-theme-dark .sbp-role-C,
+.sbp-theme-dark .sbp-role-SC,
+.sbp-theme-dark .sbp-role-OC {
+  color: #e9d5ff !important;
+  background: #3b0764 !important;
+  border-color: #9333ea !important;
+}
+
+.sbp-theme-dark .sbp-role-Atr {
+  color: #bae6fd !important;
+  background: #0c4a6e !important;
+  border-color: #0284c7 !important;
+}
+
+.sbp-theme-dark .sbp-role-Adv {
+  color: #fde68a !important;
+  background: #451a03 !important;
+  border-color: #d97706 !important;
+}
+
+.sbp-theme-dark .sbp-role-App {
+  color: #c7d2fe !important;
+  background: #312e81 !important;
+  border-color: #6366f1 !important;
+}
+
+.sbp-theme-dark .sbp-role-Conj {
+  color: #e5e7eb !important;
+  background: #374151 !important;
+  border-color: #6b7280 !important;
+}
+
 .sbp-theme-dark .sbp-pos-noun { --sbp-pos-color: #93c5fd; }
 .sbp-theme-dark .sbp-pos-verb { --sbp-pos-color: #fda4af; }
 .sbp-theme-dark .sbp-pos-adjective { --sbp-pos-color: #d8b4fe; }
