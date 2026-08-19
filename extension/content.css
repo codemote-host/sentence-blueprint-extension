@@ -448,7 +448,7 @@
 .sbp-structure-other-clause { --sbp-structure-color: #be123c; }
 .sbp-structure-independent-clause { --sbp-structure-color: #0891b2; }
 .sbp-structure-predicate { --sbp-structure-color: #dc2626; }
-.sbp-structure-connector { --sbp-structure-color: #475569; }
+.sbp-structure-connector { --sbp-structure-color: #a16207; }
 
 .sbp-sentence-analysis {
   display: block !important;
@@ -511,4 +511,4 @@
 .sbp-theme-dark .sbp-structure-other-clause { --sbp-structure-color: #fda4af; }
 .sbp-theme-dark .sbp-structure-independent-clause { --sbp-structure-color: #67e8f9; }
 .sbp-theme-dark .sbp-structure-predicate { --sbp-structure-color: #fda4af; }
-.sbp-theme-dark .sbp-structure-connector { --sbp-structure-color: #cbd5e1; }
+.sbp-theme-dark .sbp-structure-connector { --sbp-structure-color: #fde68a; }

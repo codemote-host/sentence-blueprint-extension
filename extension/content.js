@@ -322,7 +322,9 @@
     });
 
     renderListSection(container, "从句与连接", data.clauses, (item) => {
-      const label = [item.type, item.function].filter(Boolean).join(" / ");
+      const connector = item.connector || item.marker;
+      const connectorLabel = connector ? `连接词：${connector}` : "";
+      const label = [item.type, item.function, connectorLabel].filter(Boolean).join(" / ");
       return `${item.text || ""}${label ? `｜${label}` : ""}`;
     });
 
@@ -728,7 +730,7 @@
 
   function clauseStructureClassName(rawType) {
     const type = String(rawType || "");
-    if (type.includes("并列主句") || type.includes("独立分句") || type.includes("独立省略")) {
+    if ((type.includes("并列") && type.includes("分句")) || type.includes("并列主句") || type.includes("独立分句") || type.includes("独立省略")) {
       return "sbp-structure-independent-clause";
     }
     if (type.includes("状语从句")) return "sbp-structure-adverbial-clause";
@@ -779,6 +781,21 @@
         return { ...range, label, className: clauseStructureClassName(label) };
       })
       .filter(Boolean);
+    const connectorAnnotations = [];
+    for (const item of clauses) {
+      const clauseRange = findSourceRange(source, item?.text);
+      const connector = String(item?.connector || item?.marker || "").trim();
+      if (!clauseRange || !connector) continue;
+      const localRange = findSourceRange(source.slice(clauseRange.start, clauseRange.end), connector);
+      if (!localRange) continue;
+      connectorAnnotations.push({
+        start: clauseRange.start + localRange.start,
+        end: clauseRange.start + localRange.end,
+        label: `${connector}｜${item?.connector ? "并列连词" : "从属连接词"}`,
+        className: "sbp-structure-connector",
+      });
+    }
+    annotations.push(...connectorAnnotations);
     const clauseMode = annotations.length > 0;
     const defaultAnnotation = clauseMode
       ? { label: "主句", className: "sbp-structure-main-clause" }

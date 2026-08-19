@@ -102,7 +102,10 @@ class StanzaIntegrationTests(unittest.TestCase):
             result["skeleton"],
             "The real answer + is + that every single reasoning effort change completely destroys the cache",
         )
-        self.assertEqual(result["semantic_skeleton"], "The answer is that change destroys the cache")
+        self.assertEqual(
+            result["semantic_skeleton"],
+            "The answer is that change destroys the cache; switching fast mode on or off does so",
+        )
         self.assertEqual(
             [(item["text"], item["role"]) for item in result["components"]],
             [
@@ -113,8 +116,14 @@ class StanzaIntegrationTests(unittest.TestCase):
                 ("every single one", "App"),
             ],
         )
-        self.assertEqual([item["text"] for item in result["predicates"]], ["is", "destroys"])
-        self.assertIn("表语从句", {item["type"] for item in result["clauses"]})
+        self.assertEqual([item["text"] for item in result["predicates"]], ["is", "destroys", "does"])
+        self.assertEqual(
+            {item["type"] for item in result["clauses"]},
+            {"表语从句", "并列省略分句"},
+        )
+        elliptical_clause = next(item for item in result["clauses"] if item["type"] == "并列省略分句")
+        self.assertEqual(elliptical_clause["connector"], "and")
+        self.assertIn("does 代替", elliptical_clause["function"])
 
     def test_comment_adverbs_and_independent_clauses(self):
         result = server.analyze_with_stanza(

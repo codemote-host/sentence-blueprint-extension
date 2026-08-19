@@ -18,7 +18,7 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "config.json"
 CACHE_PATH = BASE_DIR / "sentence_blueprint_cache.sqlite3"
-PROMPT_VERSION = "2026-08-19-stanza-v6-semantic-skeleton"
+PROMPT_VERSION = "2026-08-19-stanza-v7-coordinated-ellipsis"
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "provider": "stanza",
@@ -874,7 +874,7 @@ components 中的 text 必须原样摘自输入，按原句顺序排列。谓语
   "semantic_skeleton": "去掉定语、状语、同位语和补充性并列后的核心命题",
   "components": [{"text":"", "role":"S", "label":"主语", "explanation":""}],
   "predicates": [{"text":"", "tense":"", "voice":"", "type":""}],
-  "clauses": [{"text":"", "type":"", "function":"", "marker":""}],
+  "clauses": [{"text":"", "type":"", "function":"", "marker":"", "connector":""}],
   "non_finite": [{"text":"", "form":"", "function":"", "logical_subject":""}],
   "word_classes": [{"text":"", "pos":"", "form":"", "function":""}],
   "explanations": [""],

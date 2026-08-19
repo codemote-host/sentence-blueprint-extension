@@ -224,7 +224,7 @@ try {
                       { text: "apologize", role: "V", label: "谓语", explanation: "主句谓语" },
                     ],
                     predicates: [{ text: "apologize", tense: "一般现在时", voice: "主动", type: "动词谓语" }],
-                    clauses: [{ text: "and I was wrong here", type: "并列主句", function: "与前一主句并列" }],
+                    clauses: [{ text: "and I was wrong here", type: "并列主句", function: "与前一主句并列", connector: "and" }],
                     non_finite: [],
                     word_classes: [{ text: "Again", pos: "副词" }, { text: "I", pos: "代词" }, { text: "apologize", pos: "动词" }],
                     explanations: [],
@@ -489,6 +489,7 @@ try {
     discourseView.sentenceTexts.length !== 2 ||
     !discourseView.tokens.some((item) => item.text === "Personally" && item.label === "评注性状语") ||
     !discourseView.tokens.some((item) => item.text === "Again" && item.label === "评注性状语") ||
+    !discourseView.tokens.some((item) => item.text === "and" && item.label === "and｜并列连词") ||
     !discourseLabels.has("主句") ||
     !discourseLabels.has("名词性从句") ||
     !discourseLabels.has("时间状语从句") ||

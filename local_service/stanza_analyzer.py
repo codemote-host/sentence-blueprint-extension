@@ -128,6 +128,13 @@ def _finite_head(word: Any, children: dict[int, list[Any]]) -> bool:
     return any("VerbForm=Fin" in (child.feats or "") for child in children.get(word.id, []) if child.deprel in {"aux", "aux:pass", "cop"})
 
 
+def _do_so_ellipsis(word: Any, children: dict[int, list[Any]]) -> bool:
+    dependents = children.get(word.id, [])
+    has_do = any(child.deprel in {"aux", "cop"} and str(child.lemma or "").lower() == "do" for child in dependents)
+    has_so = any(child.deprel == "advmod" and str(child.lemma or "").lower() == "so" for child in dependents)
+    return word.deprel == "conj" and has_do and has_so
+
+
 def _independent_clause_head(word: Any, children: dict[int, list[Any]]) -> bool:
     if word.deprel not in INDEPENDENT_CLAUSE_RELATIONS or word.upos not in {"VERB", "ADJ"}:
         return False
@@ -136,7 +143,7 @@ def _independent_clause_head(word: Any, children: dict[int, list[Any]]) -> bool:
         for child in children.get(word.id, [])
     )
     why_ellipsis = any(child.lemma == "why" and child.deprel == "advmod" for child in children.get(word.id, []))
-    return own_subject or why_ellipsis or (word.deprel == "parataxis" and _finite_head(word, children))
+    return own_subject or why_ellipsis or _do_so_ellipsis(word, children) or (word.deprel == "parataxis" and _finite_head(word, children))
 
 
 def _comment_adverb(word: Any, children: dict[int, list[Any]]) -> bool:
@@ -375,7 +382,22 @@ def _semantic_skeleton(
         for item in children.get(root.id, []):
             if item.deprel in {"obj", "iobj"}:
                 ids.update(_nominal_core_ids(item, children))
-        return _join_core_words(words_by_id, ids)
+        core = _join_core_words(words_by_id, ids)
+        elliptical = next((word for word in words if _do_so_ellipsis(word, children)), None)
+        if elliptical:
+            second_ids = _descendant_ids(elliptical.id, children)
+            for item in children.get(elliptical.id, []):
+                is_pro_verb_frame = (
+                    item.deprel in {"cc", "punct"}
+                    or (item.deprel in {"aux", "cop"} and str(item.lemma or "").lower() == "do")
+                    or (item.deprel == "advmod" and str(item.lemma or "").lower() == "so")
+                )
+                if is_pro_verb_frame:
+                    second_ids -= _descendant_ids(item.id, children)
+            second_subject = _join_core_words(words_by_id, second_ids)
+            if second_subject:
+                core = f"{core}; {second_subject} does so"
+        return core
 
     ids.update(_predicate_ids(root, words, children, include_shared_conj=True))
     if copulas and root.upos in {"NOUN", "PROPN", "PRON"}:
@@ -521,7 +543,16 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
     predicate_heads.extend(word for word in words if _independent_clause_head(word, children))
     seen_predicate_ids: set[tuple[int, ...]] = set()
     for head in predicate_heads:
-        info = _predicate_info(source, head, words, children)
+        if _do_so_ellipsis(head, children):
+            pro_verb = next(
+                child
+                for child in children.get(head.id, [])
+                if child.deprel in {"aux", "cop"} and str(child.lemma or "").lower() == "do"
+            )
+            info = _predicate_info(source, pro_verb, words, children, {pro_verb.id})
+            info["type"] = "省略替代谓语"
+        else:
+            info = _predicate_info(source, head, words, children)
         key = tuple(info["_word_ids"])
         if key not in seen_predicate_ids:
             predicates.append(info)
@@ -534,6 +565,7 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
             "type": "表语从句",
             "function": "表语/主语补足语",
             "marker": clause_marker.text if clause_marker else "",
+            "connector": "",
         })
     for head in words:
         subordinate = head.deprel in CLAUSE_RELATIONS and _finite_head(head, children)
@@ -543,12 +575,17 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
         ids = _descendant_ids(head.id, children)
         marker = next((word for word in words if word.id in ids and (word.deprel == "mark" or word.lemma in {"that", "who", "which", "whom", "whose", "where", "when", "why"})), None)
         marker_text = marker.text if marker else ""
+        coordinator = next((child for child in children.get(head.id, []) if child.deprel == "cc"), None)
+        connector_text = coordinator.text if coordinator else ""
         if independent:
             why_ellipsis = any(
                 child.lemma == "why" and child.deprel == "advmod"
                 for child in children.get(head.id, [])
             )
-            if why_ellipsis:
+            if _do_so_ellipsis(head, children):
+                clause_type = "并列省略分句"
+                function = "第二套主谓；does 代替前一分句的谓语内容"
+            elif why_ellipsis:
                 clause_type = "独立省略问句"
                 function = "冒号或并列后的独立表达"
             elif head.deprel == "conj":
@@ -575,6 +612,7 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
             "type": clause_type,
             "function": function,
             "marker": marker_text,
+            "connector": connector_text,
         })
 
     predicate_word_ids = {word_id for item in predicates for word_id in item["_word_ids"]}
