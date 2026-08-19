@@ -28,8 +28,13 @@ ADVERBIAL_TYPES = {
 
 MODALS = {"can", "could", "may", "might", "must", "shall", "should", "will", "would", "ought"}
 CLAUSE_RELATIONS = {"advcl", "acl:relcl", "ccomp", "csubj", "csubj:pass"}
+INDEPENDENT_CLAUSE_RELATIONS = {"conj", "parataxis"}
 HYPHEN_CHARS = {"-", "‐", "‑", "‒", "–", "—"}
 COMPOUND_MODIFIER_RELATIONS = {"amod", "compound", "acl"}
+COMMENT_ADVERBS = {
+    "personally", "again", "frankly", "honestly", "fortunately", "unfortunately",
+    "obviously", "apparently", "admittedly", "seriously", "technically", "basically",
+}
 
 
 def _children(words: list[Any]) -> dict[int, list[Any]]:
@@ -61,11 +66,11 @@ def _span_text(source: str, words_by_id: dict[int, Any], ids: Iterable[int]) -> 
     return source[start:end].strip(" \t\r\n,;:.!?")
 
 
-def _component(text: str, role: str, ids: Iterable[int], explanation: str) -> dict[str, Any]:
+def _component(text: str, role: str, ids: Iterable[int], explanation: str, label: str | None = None) -> dict[str, Any]:
     return {
         "text": text,
         "role": role,
-        "label": ROLE_LABELS[role],
+        "label": label or ROLE_LABELS[role],
         "explanation": explanation,
         "_word_ids": sorted(set(ids)),
     }
@@ -119,6 +124,25 @@ def _finite_head(word: Any, children: dict[int, list[Any]]) -> bool:
     if "VerbForm=Fin" in feats:
         return True
     return any("VerbForm=Fin" in (child.feats or "") for child in children.get(word.id, []) if child.deprel in {"aux", "aux:pass", "cop"})
+
+
+def _independent_clause_head(word: Any, children: dict[int, list[Any]]) -> bool:
+    if word.deprel not in INDEPENDENT_CLAUSE_RELATIONS or word.upos not in {"VERB", "ADJ"}:
+        return False
+    own_subject = any(
+        child.deprel in {"nsubj", "nsubj:pass", "csubj", "csubj:pass"}
+        for child in children.get(word.id, [])
+    )
+    why_ellipsis = any(child.lemma == "why" and child.deprel == "advmod" for child in children.get(word.id, []))
+    return own_subject or why_ellipsis or (word.deprel == "parataxis" and _finite_head(word, children))
+
+
+def _comment_adverb(word: Any, children: dict[int, list[Any]]) -> bool:
+    return (
+        word.deprel == "discourse"
+        or str(word.lemma or "").lower() in COMMENT_ADVERBS
+        or any(child.deprel == "punct" and child.text in {",", ":"} for child in children.get(word.id, []))
+    )
 
 
 def _is_hyphen(word: Any) -> bool:
@@ -238,12 +262,20 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
     components: list[dict[str, Any]] = []
 
     subject = next((word for word in children.get(root.id, []) if word.deprel in {"nsubj", "nsubj:pass", "csubj", "csubj:pass"}), None)
-    direct_adv = [word for word in children.get(root.id, []) if word.deprel in {"advcl", "obl"}]
+    direct_adv = [
+        word
+        for word in children.get(root.id, [])
+        if word.deprel in {"advcl", "obl", "advmod", "discourse"}
+        and str(word.lemma or "").lower() not in {"not", "never"}
+    ]
     for adverbial in sorted((word for word in direct_adv if word.start_char < root.start_char), key=lambda item: item.start_char):
         ids = _descendant_ids(adverbial.id, children)
+        is_comment = _comment_adverb(adverbial, children)
         components.append(_component(
             _span_text(source, words_by_id, ids), "Adv", ids,
-            "位于主句主干之前，说明原因、时间、地点、条件或背景。",
+            "位于句首，对整句话表达说话人的态度、视角或衔接关系。" if is_comment
+            else "位于主句主干之前，说明原因、时间、地点、条件或背景。",
+            "评注性状语" if is_comment else None,
         ))
 
     if subject:
@@ -312,6 +344,7 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
     predicates: list[dict[str, Any]] = []
     predicate_heads = [root]
     predicate_heads.extend(word for word in words if word.deprel in CLAUSE_RELATIONS and _finite_head(word, children))
+    predicate_heads.extend(word for word in words if _independent_clause_head(word, children))
     seen_predicate_ids: set[tuple[int, ...]] = set()
     for head in predicate_heads:
         info = _predicate_info(source, head, words, children)
@@ -322,12 +355,28 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
 
     clauses: list[dict[str, Any]] = []
     for head in words:
-        if head.deprel not in CLAUSE_RELATIONS or not _finite_head(head, children):
+        subordinate = head.deprel in CLAUSE_RELATIONS and _finite_head(head, children)
+        independent = _independent_clause_head(head, children)
+        if not subordinate and not independent:
             continue
         ids = _descendant_ids(head.id, children)
         marker = next((word for word in words if word.id in ids and (word.deprel == "mark" or word.lemma in {"that", "who", "which", "whom", "whose", "where", "when", "why"})), None)
         marker_text = marker.text if marker else ""
-        if head.deprel == "advcl":
+        if independent:
+            why_ellipsis = any(
+                child.lemma == "why" and child.deprel == "advmod"
+                for child in children.get(head.id, [])
+            )
+            if why_ellipsis:
+                clause_type = "独立省略问句"
+                function = "冒号或并列后的独立表达"
+            elif head.deprel == "conj":
+                clause_type = "并列主句"
+                function = "与前一主句并列"
+            else:
+                clause_type = "独立分句"
+                function = "补充或插入表达"
+        elif head.deprel == "advcl":
             clause_type = ADVERBIAL_TYPES.get((marker.lemma if marker else ""), "状语从句")
             function = "状语"
         elif head.deprel == "acl:relcl":

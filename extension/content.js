@@ -298,7 +298,7 @@
         const item = el("span", `sbp-component sbp-role-${role}`);
         item.append(
           el("span", "sbp-component-text", component.text || ""),
-          el("span", "sbp-component-label", ROLE_LABELS[role] || component.label || role),
+          el("span", "sbp-component-label", component.label || ROLE_LABELS[role] || role),
         );
         if (component.explanation) item.title = component.explanation;
         line.append(item);
@@ -693,13 +693,6 @@
     return Array.isArray(data?.word_classes) ? data.word_classes : [];
   }
 
-  function collectAnalysisItems(data, key) {
-    if (Array.isArray(data?.sentence_analyses) && data.sentence_analyses.length) {
-      return data.sentence_analyses.flatMap((item) => (Array.isArray(item?.[key]) ? item[key] : []));
-    }
-    return Array.isArray(data?.[key]) ? data[key] : [];
-  }
-
   function findSourceRange(source, rawText) {
     const text = String(rawText || "").trim();
     if (!text) return null;
@@ -722,6 +715,9 @@
 
   function clauseStructureClassName(rawType) {
     const type = String(rawType || "");
+    if (type.includes("并列主句") || type.includes("独立分句") || type.includes("独立省略")) {
+      return "sbp-structure-independent-clause";
+    }
     if (type.includes("状语从句")) return "sbp-structure-adverbial-clause";
     if (type.includes("定语从句")) return "sbp-structure-relative-clause";
     if (
@@ -760,10 +756,8 @@
     container.hidden = unique.size === 0;
   }
 
-  function renderStructureColoredSentence(container, sentence, data, legend) {
-    container.replaceChildren();
-    const source = String(sentence || "");
-    const clauses = collectAnalysisItems(data, "clauses");
+  function buildStructureAnnotations(source, data) {
+    const clauses = Array.isArray(data?.clauses) ? data.clauses : [];
     let annotations = clauses
       .map((item) => {
         const range = findSourceRange(source, item?.text);
@@ -776,21 +770,33 @@
     const defaultAnnotation = clauseMode
       ? { label: "主句", className: "sbp-structure-main-clause" }
       : null;
+    const components = Array.isArray(data?.components) ? data.components : [];
 
-    if (!clauseMode) {
-      annotations = collectAnalysisItems(data, "components")
+    const componentItems = clauseMode
+      ? components.filter((item) => {
+          const role = normalizeRole(item?.role);
+          return role === "Adv" && item?.label && item.label !== ROLE_LABELS.Adv;
+        })
+      : components;
+    annotations.push(
+      ...componentItems
         .map((item) => {
           const range = findSourceRange(source, item?.text);
           if (!range) return null;
           const role = normalizeRole(item?.role);
           return {
             ...range,
-            label: ROLE_LABELS[role] || item?.label || role,
+            label: item?.label || ROLE_LABELS[role] || role,
             className: componentStructureClassName(role),
           };
         })
-        .filter(Boolean);
-    }
+        .filter(Boolean),
+    );
+    return { annotations, defaultAnnotation };
+  }
+
+  function renderOneStructureSentence(container, source, data) {
+    const { annotations, defaultAnnotation } = buildStructureAnnotations(source, data);
 
     const boundaries = new Set([0, source.length]);
     for (const item of annotations) {
@@ -820,6 +826,28 @@
       usedLegendItems.push(annotation);
     }
     if (!container.childNodes.length) container.textContent = source;
+    return usedLegendItems;
+  }
+
+  function renderStructureColoredSentence(container, sentence, data, legend) {
+    container.replaceChildren();
+    const usedLegendItems = [];
+    const analyses = Array.isArray(data?.sentence_analyses) ? data.sentence_analyses : [];
+    if (analyses.length > 1) {
+      analyses.forEach((analysis, index) => {
+        const block = el("span", "sbp-structure-sentence");
+        block.dataset.sentenceLabel = `第${index + 1}句`;
+        const sentenceText = el("span", "sbp-structure-sentence-text");
+        usedLegendItems.push(
+          ...renderOneStructureSentence(sentenceText, String(analysis?.sentence || ""), analysis),
+        );
+        block.append(sentenceText);
+        container.append(block);
+        if (index < analyses.length - 1) container.append(document.createTextNode(" "));
+      });
+    } else {
+      usedLegendItems.push(...renderOneStructureSentence(container, String(sentence || ""), data));
+    }
     renderStructureLegend(legend, usedLegendItems);
   }
 

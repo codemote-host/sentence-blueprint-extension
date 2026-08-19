@@ -136,6 +136,67 @@ try {
               },
             };
           }
+          if (message.sentence === "Personally, I had it in mind that OpenAI's infra was better, and more: why not warn us when we change reasoning? Again, I apologize and I was wrong here.") {
+            return {
+              ok: true,
+              data: {
+                sentence: message.sentence,
+                analysis_method: "Stanford Stanza",
+                pattern: "2 句文本",
+                skeleton: "I + had ｜ I + apologize",
+                components: [],
+                predicates: [],
+                clauses: [],
+                non_finite: [],
+                word_classes: [],
+                explanations: [],
+                warnings: [],
+                confidence: 0.88,
+                sentence_analyses: [
+                  {
+                    sentence: "Personally, I had it in mind that OpenAI's infra was better, and more: why not warn us when we change reasoning?",
+                    analysis_method: "Stanford Stanza",
+                    pattern: "复合句（主句 SV）",
+                    skeleton: "I + had",
+                    components: [
+                      { text: "Personally", role: "Adv", label: "评注性状语", explanation: "说话人的个人视角" },
+                      { text: "I", role: "S", label: "主语", explanation: "主句主语" },
+                      { text: "had", role: "V", label: "谓语", explanation: "主句谓语" },
+                    ],
+                    predicates: [{ text: "had", tense: "过去时间结构", voice: "主动", type: "动词谓语" }],
+                    clauses: [
+                      { text: "that OpenAI's infra was better", type: "名词性从句", function: "宾语/补充内容" },
+                      { text: "and more: why not warn us when we change reasoning", type: "独立省略问句", function: "冒号或并列后的独立表达" },
+                      { text: "when we change reasoning", type: "时间状语从句", function: "状语" },
+                    ],
+                    non_finite: [],
+                    word_classes: [{ text: "Personally", pos: "副词" }, { text: "I", pos: "代词" }, { text: "had", pos: "动词" }],
+                    explanations: [],
+                    warnings: [],
+                    confidence: 0.88,
+                  },
+                  {
+                    sentence: "Again, I apologize and I was wrong here.",
+                    analysis_method: "Stanford Stanza",
+                    pattern: "复合句（主句 SV）",
+                    skeleton: "I + apologize",
+                    components: [
+                      { text: "Again", role: "Adv", label: "评注性状语", explanation: "承接前文" },
+                      { text: "I", role: "S", label: "主语", explanation: "主句主语" },
+                      { text: "apologize", role: "V", label: "谓语", explanation: "主句谓语" },
+                    ],
+                    predicates: [{ text: "apologize", tense: "一般现在时", voice: "主动", type: "动词谓语" }],
+                    clauses: [{ text: "and I was wrong here", type: "并列主句", function: "与前一主句并列" }],
+                    non_finite: [],
+                    word_classes: [{ text: "Again", pos: "副词" }, { text: "I", pos: "代词" }, { text: "apologize", pos: "动词" }],
+                    explanations: [],
+                    warnings: [],
+                    confidence: 0.88,
+                  },
+                ],
+              },
+            };
+          }
           return { ok: true, data: globalThis.SentenceBlueprintFallback.analyze(message.sentence) };
         },
       },
@@ -330,6 +391,44 @@ try {
   if (returnedToPos.activeMode !== "pos" || returnedToPos.posTokens < 10 || returnedToPos.structureTokens !== 0 || !returnedToPos.legendHidden) {
     throw new Error(`词性/结构标签页切换失败：${JSON.stringify(returnedToPos)}`);
   }
+
+  const discourseSource = "Personally, I had it in mind that OpenAI's infra was better, and more: why not warn us when we change reasoning? Again, I apologize and I was wrong here.";
+  await page.evaluate((source) => {
+    const paragraph = document.createElement("p");
+    paragraph.id = "discourse-structure-example";
+    paragraph.textContent = source;
+    document.querySelector("article").append(paragraph);
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    globalThis.__sbpDispatch({ type: "SBP_ANALYZE_SELECTION", sentence: source });
+  }, discourseSource);
+  const discourseInline = page.locator("#discourse-structure-example + .sbp-selection-inline");
+  await discourseInline.locator(".sbp-sentence-analysis").nth(1).waitFor({ timeout: 15_000 });
+  await discourseInline.locator('[data-mode="structure"]').click();
+  const discourseView = await discourseInline.evaluate((node) => ({
+    sourceText: node.querySelector(".sbp-selection-source")?.textContent || "",
+    sentenceLabels: [...node.querySelectorAll(".sbp-structure-sentence")].map((item) => item.dataset.sentenceLabel),
+    sentenceTexts: [...node.querySelectorAll(".sbp-structure-sentence-text")].map((item) => item.textContent),
+    tokens: [...node.querySelectorAll(".sbp-structure-token")].map((item) => ({ text: item.textContent, label: item.title })),
+  }));
+  const discourseLabels = new Set(discourseView.tokens.map((item) => item.label));
+  if (
+    discourseView.sourceText !== discourseSource ||
+    JSON.stringify(discourseView.sentenceLabels) !== JSON.stringify(["第1句", "第2句"]) ||
+    discourseView.sentenceTexts.length !== 2 ||
+    !discourseView.tokens.some((item) => item.text === "Personally" && item.label === "评注性状语") ||
+    !discourseView.tokens.some((item) => item.text === "Again" && item.label === "评注性状语") ||
+    !discourseLabels.has("主句") ||
+    !discourseLabels.has("名词性从句") ||
+    !discourseLabels.has("时间状语从句") ||
+    !discourseLabels.has("独立省略问句") ||
+    !discourseLabels.has("并列主句")
+  ) {
+    throw new Error(`多句分层与评注性状语视图不符合预期：${JSON.stringify(discourseView)}`);
+  }
   const lightTheme = await inline.evaluate((node) => ({
     isLight: node.classList.contains("sbp-theme-light"),
     background: getComputedStyle(node.querySelector(".sbp-details")).backgroundColor,
@@ -422,9 +521,10 @@ try {
   fs.mkdirSync(artifactDir, { recursive: true });
   await structureInline.locator('[data-mode="structure"]').click();
   await structureInline.screenshot({ path: path.join(artifactDir, "structure-view-demo.png") });
+  await discourseInline.screenshot({ path: path.join(artifactDir, "multi-sentence-structure-demo.png") });
   await page.screenshot({ path: path.join(artifactDir, "third-line-demo.png"), fullPage: true });
 
-  process.stdout.write(`E2E OK：双视图、夜间成分配色、主题切换与连字符复合词均通过。\n`);
+  process.stdout.write(`E2E OK：多句分层、评注性状语、独立句、双视图与主题切换均通过。\n`);
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));

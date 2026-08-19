@@ -74,6 +74,29 @@ class StanzaIntegrationTests(unittest.TestCase):
         self.assertEqual(raw_items["high"], "形容词")
         self.assertEqual(raw_items["performance"], "名词")
 
+    def test_comment_adverbs_and_independent_clauses(self):
+        result = server.analyze_with_stanza(
+            "Personally, I had it in mind that OpenAI's infra was better than that, and more: "
+            "why not warn us when we change reasoning? "
+            "Win-win for everybody, and the feature takes 15min to add. "
+            "Again, I apologize and I was wrong here.",
+            self.config,
+        )
+        self.assertEqual(result["pattern"], "3 句文本")
+
+        first, second, third = result["sentence_analyses"]
+        first_components = {(item["text"], item["label"]) for item in first["components"]}
+        self.assertIn(("Personally", "评注性状语"), first_components)
+        first_clause_types = {item["type"] for item in first["clauses"]}
+        self.assertIn("名词性从句", first_clause_types)
+        self.assertIn("时间状语从句", first_clause_types)
+        self.assertIn("独立省略问句", first_clause_types)
+
+        self.assertIn("并列主句", {item["type"] for item in second["clauses"]})
+        third_components = {(item["text"], item["label"]) for item in third["components"]}
+        self.assertIn(("Again", "评注性状语"), third_components)
+        self.assertIn("并列主句", {item["type"] for item in third["clauses"]})
+
 
 if __name__ == "__main__":
     unittest.main()
