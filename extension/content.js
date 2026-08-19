@@ -214,7 +214,7 @@
 
       renderAnalysis(details, response.data);
       row.dataset.sbpLoaded = "1";
-      const skeleton = response.data.skeleton || response.data.pattern || "分析完成";
+      const skeleton = response.data.semantic_skeleton || response.data.skeleton || response.data.pattern || "分析完成";
       preview.textContent = skeleton.length > 90 ? `${skeleton.slice(0, 90)}…` : skeleton;
     } catch (error) {
       renderError(details, error.message);
@@ -288,6 +288,14 @@
       const skeleton = section("主干");
       skeleton.body.append(el("span", "sbp-skeleton", data.skeleton));
       container.append(skeleton.root);
+    }
+
+    if (data.semantic_skeleton) {
+      const semanticSkeleton = section("主干语义");
+      const content = el("span", "sbp-skeleton sbp-semantic-skeleton", data.semantic_skeleton);
+      content.title = "只保留核心主语、谓语、宾语或表语，去掉定语、状语、同位语和补充性并列内容。";
+      semanticSkeleton.body.append(content);
+      container.append(semanticSkeleton.root);
     }
 
     if (Array.isArray(data.components) && data.components.length) {

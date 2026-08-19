@@ -29,6 +29,7 @@ class StanzaIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(result["pattern"], "复合句（主句 SV）")
         self.assertEqual(result["skeleton"], "it + can be monitored and governed")
+        self.assertEqual(result["semantic_skeleton"], "it can be monitored and governed")
         self.assertEqual(
             [item["text"] for item in result["predicates"]],
             ["can be monitored and governed", "controls", "aren't possible"],
@@ -96,6 +97,24 @@ class StanzaIntegrationTests(unittest.TestCase):
              "explanation": "or 连接两个并列状态词；on/off 在此都作副词。"},
             result["parallel_structures"],
         )
+        self.assertEqual(result["pattern"], "复合句（主句 SVC）")
+        self.assertEqual(
+            result["skeleton"],
+            "The real answer + is + that every single reasoning effort change completely destroys the cache",
+        )
+        self.assertEqual(result["semantic_skeleton"], "The answer is that change destroys the cache")
+        self.assertEqual(
+            [(item["text"], item["role"]) for item in result["components"]],
+            [
+                ("The real answer", "S"),
+                ("is", "V"),
+                ("actually", "Adv"),
+                ("that every single reasoning effort change completely destroys the cache", "SC"),
+                ("every single one", "App"),
+            ],
+        )
+        self.assertEqual([item["text"] for item in result["predicates"]], ["is", "destroys"])
+        self.assertIn("表语从句", {item["type"] for item in result["clauses"]})
 
     def test_comment_adverbs_and_independent_clauses(self):
         result = server.analyze_with_stanza(

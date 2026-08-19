@@ -18,7 +18,7 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "config.json"
 CACHE_PATH = BASE_DIR / "sentence_blueprint_cache.sqlite3"
-PROMPT_VERSION = "2026-08-19-stanza-v5-parallelism"
+PROMPT_VERSION = "2026-08-19-stanza-v6-semantic-skeleton"
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "provider": "stanza",
@@ -839,6 +839,7 @@ def analyze_heuristic(sentence: str) -> dict[str, Any]:
         "analysis_method": "内置规则",
         "pattern": pattern,
         "skeleton": skeleton,
+        "semantic_skeleton": skeleton,
         "components": [{key: value for key, value in item.items() if not key.startswith("token_")} for item in components],
         "predicates": [{key: value for key, value in item.items() if key not in {"start", "end", "lemma"}} for item in predicates],
         "clauses": clauses,
@@ -870,6 +871,7 @@ components 中的 text 必须原样摘自输入，按原句顺序排列。谓语
 {
   "pattern": "SV/SVO/SVC/SVOO/SVOC/复合句",
   "skeleton": "主句最小主干",
+  "semantic_skeleton": "去掉定语、状语、同位语和补充性并列后的核心命题",
   "components": [{"text":"", "role":"S", "label":"主语", "explanation":""}],
   "predicates": [{"text":"", "tense":"", "voice":"", "type":""}],
   "clauses": [{"text":"", "type":"", "function":"", "marker":""}],
@@ -898,6 +900,7 @@ def normalize_ai_result(sentence: str, result: dict[str, Any]) -> dict[str, Any]
         "analysis_method": "AI 复核",
         "pattern": str(result.get("pattern") or "待判断"),
         "skeleton": str(result.get("skeleton") or ""),
+        "semantic_skeleton": str(result.get("semantic_skeleton") or result.get("skeleton") or ""),
         "components": result.get("components") if isinstance(result.get("components"), list) else [],
         "predicates": result.get("predicates") if isinstance(result.get("predicates"), list) else [],
         "clauses": result.get("clauses") if isinstance(result.get("clauses"), list) else [],

@@ -324,6 +324,73 @@ def _teaching_word_classes(
     return display, raw, parallel_structures
 
 
+def _nominal_core_ids(head: Any, children: dict[int, list[Any]]) -> set[int]:
+    """Keep the semantic head of a noun phrase and only indispensable framing."""
+    ids = {head.id}
+    for child in children.get(head.id, []):
+        lemma = str(child.lemma or child.text).lower()
+        if child.deprel == "det" and lemma in {"a", "an", "the"}:
+            ids.add(child.id)
+        elif child.deprel in {"flat", "flat:name"}:
+            ids.add(child.id)
+        elif child.deprel == "compound" and (head.upos == "PROPN" or child.upos == "PROPN"):
+            ids.add(child.id)
+    return ids
+
+
+def _join_core_words(words_by_id: dict[int, Any], ids: Iterable[int]) -> str:
+    selected = [words_by_id[word_id] for word_id in sorted(set(ids)) if word_id in words_by_id]
+    text = " ".join(str(word.text) for word in selected)
+    return text.replace(" n't", "n't").replace(" 's", "'s")
+
+
+def _semantic_skeleton(
+    root: Any,
+    subject: Any | None,
+    words: list[Any],
+    children: dict[int, list[Any]],
+    outer_copular_clause: bool,
+    copulas: list[Any],
+) -> str:
+    """Build a readable proposition from dependency heads, without modifiers."""
+    words_by_id = {word.id: word for word in words}
+    ids: set[int] = set()
+    if subject:
+        ids.update(_nominal_core_ids(subject, children))
+
+    if outer_copular_clause:
+        ids.update(word.id for word in copulas)
+        marker = next((child for child in children.get(root.id, []) if child.deprel == "mark"), None)
+        if marker:
+            ids.add(marker.id)
+        inner_subject = next(
+            (child for child in children.get(root.id, []) if child.deprel in {"nsubj", "nsubj:pass", "csubj", "csubj:pass"}),
+            None,
+        )
+        if inner_subject:
+            ids.update(_nominal_core_ids(inner_subject, children))
+        inner_predicate_ids = _predicate_ids(root, words, children, include_shared_conj=False)
+        inner_predicate_ids.difference_update(word.id for word in copulas)
+        ids.update(inner_predicate_ids)
+        for item in children.get(root.id, []):
+            if item.deprel in {"obj", "iobj"}:
+                ids.update(_nominal_core_ids(item, children))
+        return _join_core_words(words_by_id, ids)
+
+    ids.update(_predicate_ids(root, words, children, include_shared_conj=True))
+    if copulas and root.upos in {"NOUN", "PROPN", "PRON"}:
+        ids.update(_nominal_core_ids(root, children))
+    for item in children.get(root.id, []):
+        if item.deprel in {"obj", "iobj"}:
+            ids.update(_nominal_core_ids(item, children))
+        elif item.deprel == "xcomp":
+            marker = next((child for child in children.get(item.id, []) if child.deprel == "mark"), None)
+            if marker:
+                ids.add(marker.id)
+            ids.add(item.id)
+    return _join_core_words(words_by_id, ids)
+
+
 def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
     words = list(sentence.words)
     words_by_id = {word.id: word for word in words}
@@ -331,13 +398,22 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
     root = next(word for word in words if word.head == 0)
     components: list[dict[str, Any]] = []
 
-    subject = next((word for word in children.get(root.id, []) if word.deprel in {"nsubj", "nsubj:pass", "csubj", "csubj:pass"}), None)
+    copulas = [word for word in children.get(root.id, []) if word.deprel == "cop"]
+    outer_subject = next((word for word in children.get(root.id, []) if word.deprel == "nsubj:outer"), None)
+    clause_marker = next((word for word in children.get(root.id, []) if word.deprel == "mark"), None)
+    outer_copular_clause = bool(copulas and outer_subject and clause_marker)
+    subject = outer_subject or next(
+        (word for word in children.get(root.id, []) if word.deprel in {"nsubj", "nsubj:pass", "csubj", "csubj:pass"}),
+        None,
+    )
     direct_adv = [
         word
         for word in children.get(root.id, [])
         if word.deprel in {"advcl", "obl", "advmod", "discourse"}
         and str(word.lemma or "").lower() not in {"not", "never"}
     ]
+    if outer_copular_clause and clause_marker:
+        direct_adv = [word for word in direct_adv if word.start_char < clause_marker.start_char]
     for adverbial in sorted((word for word in direct_adv if word.start_char < root.start_char), key=lambda item: item.start_char):
         ids = _descendant_ids(adverbial.id, children)
         is_comment = _comment_adverb(adverbial, children)
@@ -355,8 +431,8 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
             "由 Stanza 的主语依存关系识别。",
         ))
 
-    copulas = [word for word in children.get(root.id, []) if word.deprel == "cop"]
     main_predicate_ids = _predicate_ids(root, words, children)
+    outer_complement_ids: set[int] = set()
     if copulas:
         copula_ids = {word.id for word in copulas}
         copula_ids.update(word.id for word in children.get(root.id, []) if word.deprel == "advmod" and word.lemma in {"not", "never"})
@@ -364,17 +440,40 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
             _span_text(source, words_by_id, copula_ids), "V", copula_ids,
             "系动词及其否定成分构成谓语。",
         ))
-        excluded = copula_ids | ({subject.id} if subject else set())
-        complement_ids = _descendant_ids(root.id, children) - excluded
-        for child in children.get(root.id, []):
-            if child.deprel in CLAUSE_RELATIONS or child.deprel in {"obl", "punct"}:
-                complement_ids -= _descendant_ids(child.id, children)
-        complement_ids.discard(root.id) if root.upos == "PUNCT" else None
-        complement_ids.add(root.id)
+        if outer_copular_clause:
+            complement_ids = _descendant_ids(root.id, children)
+            for child in children.get(root.id, []):
+                matrix_adverb = child.deprel in {"advmod", "discourse"} and clause_marker and child.start_char < clause_marker.start_char
+                if child.deprel in {"nsubj:outer", "cop", "punct", "conj", "parataxis"} or matrix_adverb:
+                    complement_ids -= _descendant_ids(child.id, children)
+            for appositive in (word for word in words if word.deprel == "appos" and word.id in complement_ids):
+                complement_ids -= _descendant_ids(appositive.id, children)
+            complement_ids.add(root.id)
+            outer_complement_ids = set(complement_ids)
+        else:
+            excluded = copula_ids | ({subject.id} if subject else set())
+            complement_ids = _descendant_ids(root.id, children) - excluded
+            for child in children.get(root.id, []):
+                if child.deprel in CLAUSE_RELATIONS or child.deprel in {"obl", "punct"}:
+                    complement_ids -= _descendant_ids(child.id, children)
+            complement_ids.discard(root.id) if root.upos == "PUNCT" else None
+            complement_ids.add(root.id)
         components.append(_component(
             _span_text(source, words_by_id, complement_ids), "SC", complement_ids,
-            "说明主语的身份、性质或状态。",
+            "that 引导的从句作表语，说明主语的具体内容。" if outer_copular_clause
+            else "说明主语的身份、性质或状态。",
         ))
+        if outer_copular_clause:
+            for appositive in (word for word in words if word.deprel == "appos"):
+                appositive_ids = {
+                    word_id
+                    for word_id in _descendant_ids(appositive.id, children)
+                    if words_by_id[word_id].upos != "PUNCT"
+                }
+                components.append(_component(
+                    _span_text(source, words_by_id, appositive_ids), "App", appositive_ids,
+                    "对前面名词再作解释，不进入主干。",
+                ))
     else:
         components.append(_component(
             _span_text(source, words_by_id, main_predicate_ids), "V", main_predicate_ids,
@@ -384,16 +483,16 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
     iobjects = [word for word in children.get(root.id, []) if word.deprel == "iobj"]
     objects = [word for word in children.get(root.id, []) if word.deprel == "obj"]
     xcomps = [word for word in children.get(root.id, []) if word.deprel == "xcomp"]
-    for item in iobjects:
+    for item in ([] if outer_copular_clause else iobjects):
         ids = _descendant_ids(item.id, children)
         role = "O" if xcomps else "IO"
         explanation = "后面带有开放补语，当前成分是宾补结构中的宾语。" if role == "O" else "动作的接受者，依存关系为间接宾语。"
         components.append(_component(_span_text(source, words_by_id, ids), role, ids, explanation))
-    for item in objects:
+    for item in ([] if outer_copular_clause else objects):
         ids = _descendant_ids(item.id, children)
         role = "DO" if iobjects and not xcomps else "O"
         components.append(_component(_span_text(source, words_by_id, ids), role, ids, "动作直接涉及的人或事物。"))
-    for item in xcomps:
+    for item in ([] if outer_copular_clause else xcomps):
         ids = _descendant_ids(item.id, children)
         role = "OC" if objects or iobjects else "C"
         explanation = "说明宾语要做什么或处于什么状态，宾语与其构成逻辑主谓。" if role == "OC" else "补充谓语的内容。"
@@ -412,7 +511,12 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
     components.sort(key=lambda item: min((words_by_id[word_id].start_char for word_id in item["_word_ids"]), default=10**9))
 
     predicates: list[dict[str, Any]] = []
-    predicate_heads = [root]
+    predicate_heads = [] if outer_copular_clause else [root]
+    if outer_copular_clause:
+        predicates.append(_predicate_info(source, copulas[0], words, children, {word.id for word in copulas}))
+        inner_predicate_ids = _predicate_ids(root, words, children, include_shared_conj=False)
+        inner_predicate_ids.difference_update(word.id for word in copulas)
+        predicates.append(_predicate_info(source, root, words, children, inner_predicate_ids))
     predicate_heads.extend(word for word in words if word.deprel in CLAUSE_RELATIONS and _finite_head(word, children))
     predicate_heads.extend(word for word in words if _independent_clause_head(word, children))
     seen_predicate_ids: set[tuple[int, ...]] = set()
@@ -424,6 +528,13 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
             seen_predicate_ids.add(key)
 
     clauses: list[dict[str, Any]] = []
+    if outer_copular_clause and outer_complement_ids:
+        clauses.append({
+            "text": _span_text(source, words_by_id, outer_complement_ids),
+            "type": "表语从句",
+            "function": "表语/主语补足语",
+            "marker": clause_marker.text if clause_marker else "",
+        })
     for head in words:
         subordinate = head.deprel in CLAUSE_RELATIONS and _finite_head(head, children)
         independent = _independent_clause_head(head, children)
@@ -502,6 +613,7 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
         base_pattern = "SV"
     pattern = f"复合句（主句 {base_pattern}）" if clauses else base_pattern
     skeleton = " + ".join(component["text"] for component in components if component["role"] not in {"Adv", "Atr", "App", "Conj"})
+    semantic_skeleton = _semantic_skeleton(root, subject, words, children, outer_copular_clause, copulas)
 
     cleaned_components = [{key: value for key, value in component.items() if not key.startswith("_")} for component in components]
     cleaned_predicates = [{key: value for key, value in predicate.items() if not key.startswith("_")} for predicate in predicates]
@@ -514,6 +626,7 @@ def analyze_sentence(source: str, sentence: Any) -> dict[str, Any]:
         "analysis_method": "Stanford Stanza",
         "pattern": pattern,
         "skeleton": skeleton,
+        "semantic_skeleton": semantic_skeleton,
         "components": cleaned_components,
         "predicates": cleaned_predicates,
         "clauses": clauses,
@@ -546,6 +659,7 @@ def analyze_document(pipeline: Any, source: str, prompt_version: str) -> dict[st
         "analysis_method": "Stanford Stanza",
         "pattern": f"{len(analyses)} 句文本",
         "skeleton": " ｜ ".join(item["skeleton"] for item in analyses),
+        "semantic_skeleton": " ｜ ".join(item["semantic_skeleton"] for item in analyses),
         "components": [],
         "predicates": [],
         "clauses": [],

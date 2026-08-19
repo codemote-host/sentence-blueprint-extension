@@ -71,6 +71,7 @@ try {
                 analysis_method: "Stanford Stanza",
                 pattern: "SVC",
                 skeleton: "Apache Doris + is + a high-performance, real-time analytical database",
+                semantic_skeleton: "Apache Doris is a database",
                 components: [
                   { text: "Apache Doris", role: "S", label: "主语", explanation: "主语" },
                   { text: "is", role: "V", label: "谓语", explanation: "系动词" },
@@ -360,7 +361,7 @@ try {
       adjective: item.classList.contains("sbp-pos-adjective"),
     }));
     const chips = [...node.querySelectorAll(".sbp-pos-chip")].map((item) => item.textContent);
-    return { sourceTokens, chips };
+    return { sourceTokens, chips, details: node.querySelector(".sbp-details")?.textContent || "" };
   });
   for (const phrase of ["high-performance", "real-time"]) {
     const token = compounds.sourceTokens.find((item) => item.text === phrase);
@@ -370,6 +371,9 @@ try {
   }
   if (compounds.chips.some((item) => item === "high 形容词" || item === "performance 名词")) {
     throw new Error(`词性层仍显示连字符复合词的内部碎片：${JSON.stringify(compounds)}`);
+  }
+  if (!compounds.details.includes("主干语义") || !compounds.details.includes("Apache Doris is a database")) {
+    throw new Error(`主干语义未正确渲染：${JSON.stringify(compounds)}`);
   }
   await compoundInline.locator('[data-mode="structure"]').click();
   const simpleStructureLabels = await compoundInline
