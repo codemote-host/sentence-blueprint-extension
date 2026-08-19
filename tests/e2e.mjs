@@ -475,22 +475,18 @@ try {
     isDark: node.classList.contains("sbp-theme-dark"),
     fontFamily: getComputedStyle(node).fontFamily,
     background: getComputedStyle(node.querySelector(".sbp-details")).backgroundColor,
+    componentLabelBackground: getComputedStyle(node.querySelector(".sbp-component-label")).backgroundColor,
     rolePalette: globalThis.__sbpSampleRolePalette(node),
   }));
-  const expectedDarkRoleBackgrounds = {
-    S: "rgb(23, 37, 84)",
-    V: "rgb(76, 5, 25)",
-    O: "rgb(19, 78, 74)",
-    C: "rgb(59, 7, 100)",
-    Atr: "rgb(12, 74, 110)",
-    Adv: "rgb(69, 26, 3)",
-    App: "rgb(49, 46, 129)",
-    Conj: "rgb(55, 65, 81)",
-  };
-  const darkPaletteValid = Object.entries(expectedDarkRoleBackgrounds).every(
+  const darkPaletteValid = Object.entries(expectedLightRoleBackgrounds).every(
     ([role, background]) => darkTheme.rolePalette[role]?.background === background && darkTheme.rolePalette[role]?.contrast >= 4.5,
   );
-  if (!darkTheme.isDark || !darkTheme.fontFamily.includes("Georgia") || !darkPaletteValid) {
+  if (
+    !darkTheme.isDark ||
+    !darkTheme.fontFamily.includes("Georgia") ||
+    darkTheme.componentLabelBackground !== "rgba(255, 255, 255, 0.65)" ||
+    !darkPaletteValid
+  ) {
     throw new Error(`深色局部区域未继承页面主题：${JSON.stringify(darkTheme)}`);
   }
   await page.locator("#dark-host-section").evaluate((node) => {
