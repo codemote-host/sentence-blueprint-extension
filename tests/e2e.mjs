@@ -194,12 +194,14 @@ try {
                   {
                     sentence: "Personally, I had it in mind that OpenAI's infra was better, and more: why not warn us when we change reasoning?",
                     analysis_method: "Stanford Stanza",
-                    pattern: "复合句（主句 SV）",
-                    skeleton: "I + had",
+                    pattern: "复合句（主句 SVO）",
+                    skeleton: "I + had + it",
                     components: [
                       { text: "Personally", role: "Adv", label: "评注性状语", explanation: "说话人的个人视角" },
                       { text: "I", role: "S", label: "主语", explanation: "主句主语" },
                       { text: "had", role: "V", label: "谓语", explanation: "主句谓语" },
+                      { text: "it", role: "O", label: "形式宾语", explanation: "后面的 that 从句说明真正内容" },
+                      { text: "in mind", role: "Adv", label: "状语", explanation: "介词短语补充说明 had 的心理状态" },
                     ],
                     predicates: [{ text: "had", tense: "过去时间结构", voice: "主动", type: "动词谓语" }],
                     clauses: [
@@ -208,7 +210,29 @@ try {
                       { text: "when we change reasoning", type: "时间状语从句", function: "状语" },
                     ],
                     non_finite: [],
-                    word_classes: [{ text: "Personally", pos: "副词" }, { text: "I", pos: "代词" }, { text: "had", pos: "动词" }],
+                    word_classes: [
+                      { text: "Personally", pos: "副词" },
+                      { text: "I", pos: "代词" },
+                      { text: "had", pos: "动词" },
+                      { text: "it", pos: "代词" },
+                      { text: "in", pos: "介词" },
+                      { text: "mind", pos: "名词" },
+                      { text: "that", pos: "从属连接词" },
+                      { text: "OpenAI's", pos: "专有名词" },
+                      { text: "infra", pos: "名词" },
+                      { text: "was", pos: "助动词/系动词" },
+                      { text: "better", pos: "形容词" },
+                      { text: "and", pos: "并列连词" },
+                      { text: "more", pos: "形容词" },
+                      { text: "why", pos: "副词" },
+                      { text: "not", pos: "副词" },
+                      { text: "warn", pos: "动词" },
+                      { text: "us", pos: "代词" },
+                      { text: "when", pos: "副词" },
+                      { text: "we", pos: "代词" },
+                      { text: "change", pos: "动词" },
+                      { text: "reasoning", pos: "名词" },
+                    ],
                     explanations: [],
                     warnings: [],
                     confidence: 0.88,
@@ -226,7 +250,16 @@ try {
                     predicates: [{ text: "apologize", tense: "一般现在时", voice: "主动", type: "动词谓语" }],
                     clauses: [{ text: "and I was wrong here", type: "并列主句", function: "与前一主句并列", connector: "and" }],
                     non_finite: [],
-                    word_classes: [{ text: "Again", pos: "副词" }, { text: "I", pos: "代词" }, { text: "apologize", pos: "动词" }],
+                    word_classes: [
+                      { text: "Again", pos: "副词" },
+                      { text: "I", pos: "代词" },
+                      { text: "apologize", pos: "动词" },
+                      { text: "and", pos: "并列连词" },
+                      { text: "I", pos: "代词" },
+                      { text: "was", pos: "助动词/系动词" },
+                      { text: "wrong", pos: "形容词" },
+                      { text: "here", pos: "副词" },
+                    ],
                     explanations: [],
                     warnings: [],
                     confidence: 0.88,
@@ -340,6 +373,7 @@ try {
     const paragraph = document.createElement("p");
     paragraph.id = "hyphenated-compound-example";
     paragraph.textContent = "Apache Doris is a high-performance, real-time analytical database.";
+    paragraph.style.font = "16px/24px Inter, sans-serif";
     document.querySelector("article").append(paragraph);
     const range = document.createRange();
     range.selectNodeContents(paragraph);
@@ -361,7 +395,17 @@ try {
       adjective: item.classList.contains("sbp-pos-adjective"),
     }));
     const chips = [...node.querySelectorAll(".sbp-pos-chip")].map((item) => item.textContent);
-    return { sourceTokens, chips, details: node.querySelector(".sbp-details")?.textContent || "" };
+    const sourceStyle = getComputedStyle(source);
+    const rootStyle = getComputedStyle(node);
+    return {
+      sourceTokens,
+      chips,
+      details: node.querySelector(".sbp-details")?.textContent || "",
+      fontSize: rootStyle.fontSize,
+      lineHeight: rootStyle.lineHeight,
+      sourceFontWeight: sourceStyle.fontWeight,
+      sourceWordBreak: sourceStyle.wordBreak,
+    };
   });
   for (const phrase of ["high-performance", "real-time"]) {
     const token = compounds.sourceTokens.find((item) => item.text === phrase);
@@ -374,6 +418,14 @@ try {
   }
   if (!compounds.details.includes("主干语义") || !compounds.details.includes("Apache Doris is a database")) {
     throw new Error(`主干语义未正确渲染：${JSON.stringify(compounds)}`);
+  }
+  if (
+    compounds.fontSize !== "16px" ||
+    compounds.lineHeight !== "24px" ||
+    compounds.sourceFontWeight !== "500" ||
+    compounds.sourceWordBreak !== "normal"
+  ) {
+    throw new Error(`Doris 16px/24px 字体与技术词换行未正确继承：${JSON.stringify(compounds)}`);
   }
   await compoundInline.locator('[data-mode="structure"]').click();
   const simpleStructureLabels = await compoundInline
@@ -481,13 +533,18 @@ try {
     sentenceLabels: [...node.querySelectorAll(".sbp-structure-sentence")].map((item) => item.dataset.sentenceLabel),
     sentenceTexts: [...node.querySelectorAll(".sbp-structure-sentence-text")].map((item) => item.textContent),
     tokens: [...node.querySelectorAll(".sbp-structure-token")].map((item) => ({ text: item.textContent, label: item.title })),
+    methodBadges: node.querySelectorAll(".sbp-method").length,
+    confidenceBadges: node.querySelectorAll(".sbp-confidence").length,
   }));
   const discourseLabels = new Set(discourseView.tokens.map((item) => item.label));
   if (
     discourseView.sourceText !== discourseSource ||
     JSON.stringify(discourseView.sentenceLabels) !== JSON.stringify(["第1句", "第2句"]) ||
     discourseView.sentenceTexts.length !== 2 ||
+    discourseView.methodBadges !== 1 ||
+    discourseView.confidenceBadges !== 1 ||
     !discourseView.tokens.some((item) => item.text === "Personally" && item.label === "评注性状语") ||
+    !discourseView.tokens.some((item) => item.text === "in mind" && item.label === "状语") ||
     !discourseView.tokens.some((item) => item.text === "Again" && item.label === "评注性状语") ||
     !discourseView.tokens.some((item) => item.text === "and" && item.label === "and｜并列连词") ||
     !discourseLabels.has("主句") ||

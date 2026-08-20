@@ -243,8 +243,9 @@
     container.append(box);
   }
 
-  function renderAnalysis(container, data) {
+  function renderAnalysis(container, data, options = {}) {
     container.replaceChildren();
+    const compact = Boolean(options.compact);
 
     if (Array.isArray(data.sentence_analyses) && data.sentence_analyses.length > 1) {
       const summary = el("span", "sbp-meta");
@@ -270,18 +271,20 @@
         const body = el("span", "sbp-sentence-body");
         block.append(heading, body);
         container.append(block);
-        renderAnalysis(body, sentenceAnalysis);
+        renderAnalysis(body, sentenceAnalysis, { compact: true });
       });
       renderListSection(container, "提醒", data.warnings, (item) => String(item), "sbp-warning-list");
       return;
     }
 
     const meta = el("span", "sbp-meta");
-    meta.append(
-      badge(data.pattern || "待判断", "sbp-pattern"),
-      badge(data.analysis_method || "分析", "sbp-method"),
-      badge(`置信度 ${Math.round(Number(data.confidence || 0) * 100)}%`, "sbp-confidence"),
-    );
+    meta.append(badge(data.pattern || "待判断", "sbp-pattern"));
+    if (!compact) {
+      meta.append(
+        badge(data.analysis_method || "分析", "sbp-method"),
+        badge(`置信度 ${Math.round(Number(data.confidence || 0) * 100)}%`, "sbp-confidence"),
+      );
+    }
     container.append(meta);
 
     if (data.skeleton) {
@@ -575,10 +578,10 @@
       : { r: 15, g: 23, b: 42 };
 
     const hostFontSize = Number.parseFloat(computed.fontSize) || 14;
-    const fontSize = Math.max(12.5, Math.min(hostFontSize, 15.5));
+    const fontSize = Math.max(13.5, Math.min(hostFontSize, 16));
     const hostLineHeight = Number.parseFloat(computed.lineHeight);
     const lineHeight = Number.isFinite(hostLineHeight)
-      ? Math.max(1.35, Math.min(hostLineHeight / Math.max(hostFontSize, 1), 1.8))
+      ? Math.max(1.45, Math.min(hostLineHeight / Math.max(hostFontSize, 1), 1.65))
       : 1.55;
     const hostRadius = Number.parseFloat(computed.borderRadius);
     const radius = Number.isFinite(hostRadius) && hostRadius > 0 ? Math.min(hostRadius, 14) : 8;
@@ -594,7 +597,7 @@
     row.style.setProperty("--sbp-accent-soft", colorToCss(accentSoft));
     row.style.setProperty("--sbp-accent-border", colorToCss(accentBorder));
     row.style.setProperty("--sbp-on-accent", colorToCss(onAccent));
-    row.style.setProperty("--sbp-shadow", `rgba(${foreground.r}, ${foreground.g}, ${foreground.b}, ${dark ? 0.2 : 0.09})`);
+    row.style.setProperty("--sbp-shadow", dark ? "rgba(0, 0, 0, 0.34)" : "rgba(15, 23, 42, 0.10)");
     row.style.setProperty("--sbp-font-family", computed.fontFamily || "system-ui, sans-serif");
     row.style.setProperty("--sbp-font-size", `${fontSize}px`);
     row.style.setProperty("--sbp-line-height", String(lineHeight));
@@ -805,7 +808,10 @@
     const componentItems = clauseMode
       ? components.filter((item) => {
           const role = normalizeRole(item?.role);
-          return role === "Adv" && item?.label && item.label !== ROLE_LABELS.Adv;
+          // Keep adverbials visible inside a broader clause range. The renderer
+          // intentionally prefers the narrower annotation, so phrases such as
+          // `in mind` retain their own learner-facing label.
+          return role === "Adv";
         })
       : components;
     annotations.push(
